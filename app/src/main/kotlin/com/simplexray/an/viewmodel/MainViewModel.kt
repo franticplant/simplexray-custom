@@ -23,6 +23,8 @@ import com.simplexray.an.common.CoreStatsClient
 import com.simplexray.an.common.ROUTE_APP_LIST
 import com.simplexray.an.common.ROUTE_CONFIG_EDIT
 import com.simplexray.an.common.ThemeMode
+import com.simplexray.an.core.XrayInstanceInfo
+import com.simplexray.an.core.XrayInstanceManager
 import com.simplexray.an.data.source.FileManager
 import com.simplexray.an.prefs.Preferences
 import com.simplexray.an.service.TProxyService
@@ -117,6 +119,9 @@ class MainViewModel(application: Application) :
 
     private val _coreStatsState = MutableStateFlow(CoreStatsState())
     val coreStatsState: StateFlow<CoreStatsState> = _coreStatsState.asStateFlow()
+
+    private val _activeInstances = MutableStateFlow<List<XrayInstanceInfo>>(emptyList())
+    val activeInstances: StateFlow<List<XrayInstanceInfo>> = _activeInstances.asStateFlow()
 
     private val _controlMenuClickable = MutableStateFlow(true)
     val controlMenuClickable: StateFlow<Boolean> = _controlMenuClickable.asStateFlow()
@@ -326,6 +331,11 @@ class MainViewModel(application: Application) :
 
     suspend fun updateCoreStats() {
         if (!_isServiceEnabled.value) return
+        
+        // Update stats for all managed Xray instances
+        XrayInstanceManager.updateAllStats()
+        _activeInstances.value = XrayInstanceManager.getAllInstanceInfos()
+
         if (coreStatsClient == null)
             coreStatsClient = CoreStatsClient.create(prefs.apiAddress, prefs.apiPort)
 
@@ -353,6 +363,50 @@ class MainViewModel(application: Application) :
             uptime = stats?.uptime ?: 0
         )
         Log.d(TAG, "Core stats updated")
+    }
+
+    fun refreshActiveInstances() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _activeInstances.value = XrayInstanceManager.getAllInstanceInfos()
+        }
+    }
+
+    fun toggleInstance(configPath: String) {
+        viewModelScope.launch {
+            val isRunning = XrayInstanceManager.isInstanceRunning(configPath)
+            if (isRunning) {
+                stopInstanceConfig(configPath)
+            } else {
+                startInstanceConfig(configPath)
+            }
+        }
+    }
+
+    fun startInstanceConfig(configPath: String) {
+        viewModelScope.launch {
+            prefs.setConfigActive(configPath, true)
+            if (_isServiceEnabled.value) {
+                val intent = Intent(application, TProxyService::class.java)
+                    .setAction(TProxyService.ACTION_START_INSTANCE)
+                    .putExtra(TProxyService.EXTRA_CONFIG_PATH, configPath)
+                _uiEvent.trySend(MainViewUiEvent.StartService(intent))
+            } else {
+                updateSelectedConfigFile(File(configPath))
+                startTProxyService(TProxyService.ACTION_CONNECT)
+            }
+            refreshActiveInstances()
+        }
+    }
+
+    fun stopInstanceConfig(configPath: String) {
+        viewModelScope.launch {
+            prefs.setConfigActive(configPath, false)
+            val intent = Intent(application, TProxyService::class.java)
+                .setAction(TProxyService.ACTION_STOP_INSTANCE)
+                .putExtra(TProxyService.EXTRA_CONFIG_PATH, configPath)
+            _uiEvent.trySend(MainViewUiEvent.StartService(intent))
+            refreshActiveInstances()
+        }
     }
 
     suspend fun importConfigFromClipboard(): String? {

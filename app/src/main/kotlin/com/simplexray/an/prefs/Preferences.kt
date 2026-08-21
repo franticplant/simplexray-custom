@@ -315,13 +315,45 @@ class Preferences(context: Context) {
             setValueInProvider(THEME, value.value)
         }
 
+    var activeConfigPaths: Set<String>
+        get() {
+            val jsonSet = getPrefData(ACTIVE_CONFIG_PATHS).first
+            return jsonSet?.let {
+                try {
+                    val type = object : TypeToken<Set<String>>() {}.type
+                    gson.fromJson<Set<String>>(it, type)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error deserializing ACTIVE_CONFIG_PATHS Set<String>", e)
+                    emptySet()
+                }
+            } ?: emptySet()
+        }
+        set(paths) {
+            val jsonSet = gson.toJson(paths)
+            setValueInProvider(ACTIVE_CONFIG_PATHS, jsonSet)
+        }
+
+    fun isConfigActive(path: String): Boolean {
+        return activeConfigPaths.contains(path)
+    }
+
+    fun setConfigActive(path: String, active: Boolean) {
+        val set = activeConfigPaths.toMutableSet()
+        if (active) {
+            set.add(path)
+        } else {
+            set.remove(path)
+        }
+        activeConfigPaths = set
+    }
+
     companion object {
         const val SOCKS_ADDR: String = "SocksAddr"
         const val SOCKS_PORT: String = "SocksPort"
         const val SOCKS_USER: String = "SocksUser"
         const val SOCKS_PASS: String = "SocksPass"
         const val DNS_IPV4: String = "DnsIpv4"
-        const val DNS_IPV6: String = "DnsIpv6"
+        const val DNS_IPV6: String = "DNS_IPV6"
         const val IPV4: String = "Ipv4"
         const val IPV6: String = "Ipv6"
         const val GLOBAL: String = "Global"
@@ -344,6 +376,7 @@ class Preferences(context: Context) {
         const val API_PORT: String = "ApiPort"
         const val BYPASS_SELECTED_APPS: String = "BypassSelectedApps"
         const val THEME: String = "Theme"
+        const val ACTIVE_CONFIG_PATHS: String = "ActiveConfigPaths"
         private const val TAG = "Preferences"
     }
 }

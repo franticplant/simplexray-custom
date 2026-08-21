@@ -31,7 +31,7 @@ file("$rootDir/version.properties").withInputStream { versionProps.load(it) }
 
 android {
     namespace "com.simplexray.an"
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.simplexray.an"
@@ -59,17 +59,38 @@ android {
     }
 
     def isSigningEnabled = false
-    def propsFile = rootProject.file('store.properties')
+    def keystorePath = System.getenv("KEYSTORE_PATH") ?: (project.hasProperty("keystorePath") ? project.getProperty("keystorePath") : null)
+    def storePassword = System.getenv("KEYSTORE_PASSWORD") ?: (project.hasProperty("storePassword") ? project.getProperty("storePassword") : "android")
+    def keyAlias = System.getenv("KEY_ALIAS") ?: (project.hasProperty("keyAlias") ? project.getProperty("keyAlias") : "androiddebugkey")
+    def keyPassword = System.getenv("KEY_PASSWORD") ?: (project.hasProperty("keyPassword") ? project.getProperty("keyPassword") : "android")
 
+    def propsFile = rootProject.file('store.properties')
     if (propsFile.exists()) {
         def props = new Properties()
         props.load(new FileInputStream(propsFile))
-        if (props.containsKey('storeFile')) {
+        if (!keystorePath && props.containsKey('storeFile')) {
+            keystorePath = props['storeFile']
+        }
+        if (props.containsKey('storePassword')) storePassword = props['storePassword']
+        if (props.containsKey('keyAlias')) keyAlias = props['keyAlias']
+        if (props.containsKey('keyPassword')) keyPassword = props['keyPassword']
+    }
+
+    if (!keystorePath) {
+        def defaultKeystore = rootProject.file('debug.keystore')
+        if (defaultKeystore.exists()) {
+            keystorePath = defaultKeystore.absolutePath
+        }
+    }
+
+    if (keystorePath) {
+        def keystoreFile = file(keystorePath)
+        if (keystoreFile.exists()) {
             signingConfigs.release {
-                storeFile = rootProject.file(props['storeFile'])
-                storePassword = props['storePassword']
-                keyAlias = props['keyAlias']
-                keyPassword = props['keyPassword']
+                storeFile = keystoreFile
+                storePassword = storePassword
+                keyAlias = keyAlias
+                keyPassword = keyPassword
 
                 enableV1Signing false
                 enableV2Signing false

@@ -7,20 +7,25 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,16 +38,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.simplexray.an.R
+import com.simplexray.an.common.formatBytes
+import com.simplexray.an.core.InstanceStatus
 import com.simplexray.an.viewmodel.MainViewModel
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -61,6 +71,7 @@ fun ConfigScreen(
     val showDeleteDialog = remember { mutableStateOf<File?>(null) }
 
     val isServiceEnabled by mainViewModel.isServiceEnabled.collectAsState()
+    val activeInstances by mainViewModel.activeInstances.collectAsState()
 
     val files by mainViewModel.configFiles.collectAsState()
     val selectedFile by mainViewModel.selectedConfigFile.collectAsState()
@@ -71,6 +82,7 @@ fun ConfigScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 mainViewModel.refreshConfigFileList()
+                mainViewModel.refreshActiveInstances()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -81,6 +93,7 @@ fun ConfigScreen(
 
     LaunchedEffect(Unit) {
         mainViewModel.refreshConfigFileList()
+        mainViewModel.refreshActiveInstances()
     }
 
     val hapticFeedback = LocalHapticFeedback.current
@@ -116,6 +129,9 @@ fun ConfigScreen(
                 items(files, key = { it }) { file ->
                     ReorderableItem(reorderableLazyListState, key = file) {
                         val isSelected = file == selectedFile
+                        val activeInfo = activeInstances.find { it.configPath == file.absolutePath }
+                        val isRunning = activeInfo?.status == InstanceStatus.RUNNING
+
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -137,34 +153,99 @@ fun ConfigScreen(
                             ),
                             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                         ) {
-                            Row(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(IntrinsicSize.Max)
-                                    .longPressDraggableHandle(),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .padding(16.dp)
+                                    .longPressDraggableHandle()
                             ) {
                                 Row(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .padding(16.dp),
+                                    modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        file.name.removeSuffix(".json"),
-                                        modifier = Modifier.weight(1f),
-                                        style = MaterialTheme.typography.titleMedium
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            file.name.removeSuffix(".json"),
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+
+                                        Row(
+                                            modifier = Modifier.padding(top = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (isSelected) {
+                                                AssistChip(
+                                                    onClick = {},
+                                                    label = { Text("Primary VPN", fontSize = 11.sp) },
+                                                    colors = AssistChipDefaults.assistChipColors(
+                                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                        labelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                                    )
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                            }
+
+                                            if (isRunning) {
+                                                AssistChip(
+                                                    onClick = {},
+                                                    label = {
+                                                        Text(
+                                                            "Active (Port ${activeInfo?.apiPort ?: 0})",
+                                                            fontSize = 11.sp
+                                                        )
+                                                    },
+                                                    colors = AssistChipDefaults.assistChipColors(
+                                                        containerColor = Color(0xFF2E7D32),
+                                                        labelColor = Color.White
+                                                    )
+                                                )
+                                            } else {
+                                                AssistChip(
+                                                    onClick = {},
+                                                    label = { Text("Stopped", fontSize = 11.sp) },
+                                                    colors = AssistChipDefaults.assistChipColors(
+                                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Switch(
+                                        checked = isRunning,
+                                        onCheckedChange = {
+                                            mainViewModel.toggleInstance(file.absolutePath)
+                                        }
                                     )
+
                                     IconButton(onClick = { onEditConfigClick(file) }) {
                                         Icon(
                                             painterResource(R.drawable.edit),
                                             contentDescription = "Edit"
                                         )
                                     }
+
                                     IconButton(onClick = { showDeleteDialog.value = file }) {
                                         Icon(
                                             painterResource(R.drawable.delete),
                                             contentDescription = "Delete"
+                                        )
+                                    }
+                                }
+
+                                if (activeInfo?.status == InstanceStatus.RUNNING) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Traffic: ↑ ${formatBytes(activeInfo.uplink)}  ↓ ${formatBytes(activeInfo.downlink)}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }

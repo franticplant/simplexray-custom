@@ -20,8 +20,7 @@ import androidx.core.app.NotificationCompat
 import com.simplexray.an.BuildConfig
 import com.simplexray.an.R
 import com.simplexray.an.activity.MainActivity
-import com.simplexray.an.common.ConfigUtils
-import com.simplexray.an.common.ConfigUtils.extractPortsFromJson
+import com.simplexray.an.core.XrayInstanceManager
 import com.simplexray.an.data.source.LogFileManager
 import com.simplexray.an.prefs.Preferences
 import kotlinx.coroutines.CoroutineScope
@@ -29,14 +28,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import java.io.BufferedReader
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.io.InputStreamReader
-import java.io.InterruptedIOException
-import java.net.ServerSocket
-import kotlin.concurrent.Volatile
 import kotlin.system.exitProcess
 
 class TProxyService : VpnService() {
@@ -58,33 +52,8 @@ class TProxyService : VpnService() {
         }
     }
 
-    private fun findAvailablePort(excludedPorts: Set<Int>): Int? {
-        (10000..65535)
-            .shuffled()
-            .forEach { port ->
-                if (port in excludedPorts) return@forEach
-                runCatching {
-                    ServerSocket(port).use { socket ->
-                        socket.reuseAddress = true
-                    }
-                    port
-                }.onFailure {
-                    Log.d(TAG, "Port $port unavailable: ${it.message}")
-                }.onSuccess {
-                    return port
-                }
-            }
-        return null
-    }
-
     private lateinit var logFileManager: LogFileManager
-
-    @Volatile
-    private var xrayProcess: Process? = null
     private var tunFd: ParcelFileDescriptor? = null
-
-    @Volatile
-    private var reloadingRequested = false
 
     override fun onCreate() {
         super.onCreate()
@@ -92,31 +61,47 @@ class TProxyService : VpnService() {
         Log.d(TAG, "TProxyService created.")
     }
 
-    override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
-        val action = intent.action
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val action = intent?.action
         when (action) {
             ACTION_DISCONNECT -> {
                 stopXray()
                 return START_NOT_STICKY
             }
 
+            ACTION_START_INSTANCE -> {
+                val configPath = intent.getStringExtra(EXTRA_CONFIG_PATH)
+                if (!configPath.isNullOrEmpty()) {
+                    Log.d(TAG, "Starting instance for config: $configPath")
+                    XrayInstanceManager.startInstance(
+                        applicationContext,
+                        configPath,
+                        isPrimaryVpn = false
+                    ) { tag, line -> handleLog(tag, line) }
+                }
+                return START_STICKY
+            }
+
+            ACTION_STOP_INSTANCE -> {
+                val configPath = intent.getStringExtra(EXTRA_CONFIG_PATH)
+                if (!configPath.isNullOrEmpty()) {
+                    Log.d(TAG, "Stopping instance for config: $configPath")
+                    XrayInstanceManager.stopInstance(configPath)
+                }
+                return START_STICKY
+            }
+
             ACTION_RELOAD_CONFIG -> {
                 val prefs = Preferences(this)
-                if (prefs.disableVpn) {
-                    Log.d(TAG, "Received RELOAD_CONFIG action (core-only mode)")
-                    reloadingRequested = true
-                    xrayProcess?.destroy()
-                    serviceScope.launch { runXrayProcess() }
-                    return START_STICKY
+                val selectedConfigPath = prefs.selectedConfigPath
+                if (!selectedConfigPath.isNullOrEmpty()) {
+                    Log.d(TAG, "Received RELOAD_CONFIG action for primary instance.")
+                    XrayInstanceManager.startInstance(
+                        applicationContext,
+                        selectedConfigPath,
+                        isPrimaryVpn = true
+                    ) { tag, line -> handleLog(tag, line) }
                 }
-                if (tunFd == null) {
-                    Log.w(TAG, "Cannot reload config, VPN service is not running.")
-                    return START_STICKY
-                }
-                Log.d(TAG, "Received RELOAD_CONFIG action.")
-                reloadingRequested = true
-                xrayProcess?.destroy()
-                serviceScope.launch { runXrayProcess() }
                 return START_STICKY
             }
 
@@ -132,7 +117,6 @@ class TProxyService : VpnService() {
                     @Suppress("SameParameterValue") val channelName = "nosocks"
                     initNotificationChannel(channelName)
                     createNotification(channelName)
-
                 } else {
                     startXray()
                 }
@@ -156,6 +140,7 @@ class TProxyService : VpnService() {
         handler.removeCallbacks(broadcastLogsRunnable)
         broadcastLogsRunnable.run()
         serviceScope.cancel()
+        XrayInstanceManager.stopAll()
         Log.d(TAG, "TProxyService destroyed.")
         exitProcess(0)
     }
@@ -165,98 +150,51 @@ class TProxyService : VpnService() {
         super.onRevoke()
     }
 
+    private fun handleLog(tag: String, line: String) {
+        val formattedLine = "[$tag] $line"
+        logFileManager.appendLog(formattedLine)
+        synchronized(logBroadcastBuffer) {
+            logBroadcastBuffer.add(formattedLine)
+            if (!handler.hasCallbacks(broadcastLogsRunnable)) {
+                handler.postDelayed(broadcastLogsRunnable, BROADCAST_DELAY_MS)
+            }
+        }
+    }
+
     private fun startXray() {
         startService()
         serviceScope.launch { runXrayProcess() }
     }
 
     private fun runXrayProcess() {
-        var currentProcess: Process? = null
-        try {
-            Log.d(TAG, "Attempting to start xray process.")
-            val libraryDir = getNativeLibraryDir(applicationContext)
-            val prefs = Preferences(applicationContext)
-            val selectedConfigPath = prefs.selectedConfigPath ?: return
-            val xrayPath = "$libraryDir/libxray.so"
-            val configContent = File(selectedConfigPath).readText()
-            val apiPort = findAvailablePort(extractPortsFromJson(configContent)) ?: return
-            prefs.apiPort = apiPort
-            Log.d(TAG, "Found and set API port: $apiPort")
+        val prefs = Preferences(applicationContext)
+        val selectedConfigPath = prefs.selectedConfigPath ?: return
 
-            val octet2 = (0..255).random()
-            val octet3 = (0..255).random()
-            val octet4 = (1..254).random()
-            prefs.apiAddress = "127.$octet2.$octet3.$octet4"
-            Log.d(TAG, "Randomized API address: ${prefs.apiAddress}")
+        Log.d(TAG, "Starting primary VPN instance: $selectedConfigPath")
+        XrayInstanceManager.startInstance(
+            applicationContext,
+            selectedConfigPath,
+            isPrimaryVpn = true
+        ) { tag, line -> handleLog(tag, line) }
 
-            val processBuilder = getProcessBuilder(xrayPath)
-            currentProcess = processBuilder.start()
-            this.xrayProcess = currentProcess
-
-            Log.d(TAG, "Writing config to xray stdin from: $selectedConfigPath")
-            val injectedConfigContent =
-                ConfigUtils.injectStatsService(prefs, configContent)
-            currentProcess.outputStream.use { os ->
-                os.write(injectedConfigContent.toByteArray())
-                os.flush()
-            }
-
-            val inputStream = currentProcess.inputStream
-            val reader = BufferedReader(InputStreamReader(inputStream))
-            var line: String
-            Log.d(TAG, "Reading xray process output.")
-            while ((reader.readLine().also { line = it }) != null) {
-                logFileManager.appendLog(line)
-                synchronized(logBroadcastBuffer) {
-                    logBroadcastBuffer.add(line)
-                    if (!handler.hasCallbacks(broadcastLogsRunnable)) {
-                        handler.postDelayed(broadcastLogsRunnable, BROADCAST_DELAY_MS)
-                    }
-                }
-            }
-            Log.d(TAG, "xray process output stream finished.")
-        } catch (e: InterruptedIOException) {
-            Log.d(TAG, "Xray process reading interrupted.")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error executing xray", e)
-        } finally {
-            Log.d(TAG, "Xray process task finished.")
-            if (reloadingRequested) {
-                Log.d(TAG, "Xray process stopped due to configuration reload.")
-                reloadingRequested = false
-            } else {
-                Log.d(TAG, "Xray process exited unexpectedly or due to stop request. Stopping VPN.")
-                stopXray()
-            }
-            if (this.xrayProcess === currentProcess) {
-                this.xrayProcess = null
-            } else {
-                Log.w(TAG, "Finishing task for an old xray process instance.")
+        // Start secondary active instances if configured
+        val activePaths = prefs.activeConfigPaths
+        activePaths.forEach { path ->
+            if (path != selectedConfigPath && File(path).exists()) {
+                Log.d(TAG, "Starting secondary active instance: $path")
+                XrayInstanceManager.startInstance(
+                    applicationContext,
+                    path,
+                    isPrimaryVpn = false
+                ) { tag, line -> handleLog(tag, line) }
             }
         }
     }
 
-    private fun getProcessBuilder(xrayPath: String): ProcessBuilder {
-        val filesDir = applicationContext.filesDir
-        val command: MutableList<String> = mutableListOf(xrayPath)
-        val processBuilder = ProcessBuilder(command)
-        val environment = processBuilder.environment()
-        environment["XRAY_LOCATION_ASSET"] = filesDir.path
-        processBuilder.directory(filesDir)
-        processBuilder.redirectErrorStream(true)
-        return processBuilder
-    }
-
     private fun stopXray() {
-        Log.d(TAG, "stopXray called with keepExecutorAlive=" + false)
+        Log.d(TAG, "stopXray called")
         serviceScope.cancel()
-        Log.d(TAG, "CoroutineScope cancelled.")
-
-        xrayProcess?.destroy()
-        xrayProcess = null
-        Log.d(TAG, "xrayProcess reference nulled.")
-
-        Log.d(TAG, "Calling stopService (stopping VPN).")
+        XrayInstanceManager.stopAll()
         stopService()
     }
 
@@ -391,6 +329,9 @@ class TProxyService : VpnService() {
         const val ACTION_STOP: String = "com.simplexray.an.STOP"
         const val ACTION_LOG_UPDATE: String = "com.simplexray.an.LOG_UPDATE"
         const val ACTION_RELOAD_CONFIG: String = "com.simplexray.an.RELOAD_CONFIG"
+        const val ACTION_START_INSTANCE: String = "com.simplexray.an.START_INSTANCE"
+        const val ACTION_STOP_INSTANCE: String = "com.simplexray.an.STOP_INSTANCE"
+        const val EXTRA_CONFIG_PATH: String = "config_path"
         const val EXTRA_LOG_DATA: String = "log_data"
         private const val TAG = "VpnService"
         private const val BROADCAST_DELAY_MS: Long = 3000
