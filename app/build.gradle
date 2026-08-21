@@ -59,38 +59,38 @@ android {
     }
 
     def isSigningEnabled = false
-    def keystorePath = System.getenv("KEYSTORE_PATH") ?: (project.hasProperty("keystorePath") ? project.getProperty("keystorePath") : null)
-    def storePassword = System.getenv("KEYSTORE_PASSWORD") ?: (project.hasProperty("storePassword") ? project.getProperty("storePassword") : "android")
-    def keyAlias = System.getenv("KEY_ALIAS") ?: (project.hasProperty("keyAlias") ? project.getProperty("keyAlias") : "androiddebugkey")
-    def keyPassword = System.getenv("KEY_PASSWORD") ?: (project.hasProperty("keyPassword") ? project.getProperty("keyPassword") : "android")
+    def myKeystorePath = System.getenv("KEYSTORE_PATH") ?: (project.hasProperty("keystorePath") ? project.getProperty("keystorePath") : null)
+    def myStorePassword = System.getenv("KEYSTORE_PASSWORD") ?: (project.hasProperty("storePassword") ? project.getProperty("storePassword") : "android")
+    def myKeyAlias = System.getenv("KEY_ALIAS") ?: (project.hasProperty("keyAlias") ? project.getProperty("keyAlias") : "androiddebugkey")
+    def myKeyPassword = System.getenv("KEY_PASSWORD") ?: (project.hasProperty("keyPassword") ? project.getProperty("keyPassword") : "android")
 
     def propsFile = rootProject.file('store.properties')
     if (propsFile.exists()) {
         def props = new Properties()
         props.load(new FileInputStream(propsFile))
-        if (!keystorePath && props.containsKey('storeFile')) {
-            keystorePath = props['storeFile']
+        if (!myKeystorePath && props.containsKey('storeFile')) {
+            myKeystorePath = props['storeFile']
         }
-        if (props.containsKey('storePassword')) storePassword = props['storePassword']
-        if (props.containsKey('keyAlias')) keyAlias = props['keyAlias']
-        if (props.containsKey('keyPassword')) keyPassword = props['keyPassword']
+        if (props.containsKey('storePassword')) myStorePassword = props['storePassword']
+        if (props.containsKey('keyAlias')) myKeyAlias = props['keyAlias']
+        if (props.containsKey('keyPassword')) myKeyPassword = props['keyPassword']
     }
 
-    if (!keystorePath) {
+    if (!myKeystorePath) {
         def defaultKeystore = rootProject.file('debug.keystore')
         if (defaultKeystore.exists()) {
-            keystorePath = defaultKeystore.absolutePath
+            myKeystorePath = defaultKeystore.absolutePath
         }
     }
 
-    if (keystorePath) {
-        def keystoreFile = file(keystorePath)
+    if (myKeystorePath) {
+        def keystoreFile = file(myKeystorePath)
         if (keystoreFile.exists()) {
             signingConfigs.release {
                 storeFile = keystoreFile
-                storePassword = storePassword
-                keyAlias = keyAlias
-                keyPassword = keyPassword
+                storePassword = myStorePassword
+                keyAlias = myKeyAlias
+                keyPassword = myKeyPassword
 
                 enableV1Signing false
                 enableV2Signing false
