@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.service
 
 import android.app.ActivityManager
@@ -13,14 +16,15 @@ import android.util.Log
 
 class QuickTileService : TileService() {
 
-    private val broadcastReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                TProxyService.ACTION_START -> updateTileState(true)
-                TProxyService.ACTION_STOP -> updateTileState(false)
+    private val broadcastReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                when (intent.action) {
+                    TProxyService.ACTION_START -> updateTileState(true)
+                    TProxyService.ACTION_STOP -> updateTileState(false)
+                }
             }
         }
-    }
 
     override fun onCreate() {
         super.onCreate()
@@ -31,19 +35,22 @@ class QuickTileService : TileService() {
         super.onStartListening()
         Log.d(TAG, "QuickTileService started listening.")
 
-        IntentFilter().apply {
-            addAction(TProxyService.ACTION_START)
-            addAction(TProxyService.ACTION_STOP)
-        }.also { filter ->
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                registerReceiver(broadcastReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                @Suppress("UnspecifiedRegisterReceiverFlag") registerReceiver(
-                    broadcastReceiver,
-                    filter
-                )
+        IntentFilter()
+            .apply {
+                addAction(TProxyService.ACTION_START)
+                addAction(TProxyService.ACTION_STOP)
             }
-        }
+            .also { filter ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    registerReceiver(broadcastReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                } else {
+                    @Suppress("UnspecifiedRegisterReceiverFlag")
+                    registerReceiver(
+                        broadcastReceiver,
+                        filter,
+                    )
+                }
+            }
 
         updateTileState(isVpnServiceRunning(this, TProxyService::class.java))
     }
@@ -96,11 +103,13 @@ class QuickTileService : TileService() {
     }
 
     private fun startTProxyService(action: String) {
-        Intent(this, TProxyService::class.java).apply {
-            this.action = action
-        }.also { intent ->
-            startService(intent)
-        }
+        Intent(this, TProxyService::class.java)
+            .apply {
+                this.action = action
+            }
+            .also { intent ->
+                startService(intent)
+            }
     }
 
     companion object {

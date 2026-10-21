@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.viewmodel
 
 import android.Manifest
@@ -18,13 +21,13 @@ import androidx.lifecycle.viewModelScope
 import com.simplexray.an.BuildConfig
 import com.simplexray.an.R
 import com.simplexray.an.prefs.Preferences
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.Locale
 
 sealed class AppListViewUiEvent {
     data class ShowSnackbar(val message: String) : AppListViewUiEvent()
@@ -35,7 +38,7 @@ data class Package(
     val label: String,
     val icon: Drawable,
     val packageName: String,
-    val isSystemApp: Boolean
+    val isSystemApp: Boolean,
 )
 
 class AppListViewModel(application: Application) : AndroidViewModel(application) {
@@ -53,8 +56,9 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
     val filteredList by derivedStateOf {
         packageList.filter { pkg ->
             (showSystemApps || !pkg.isSystemApp) &&
-                    pkg.label.lowercase(Locale.getDefault())
-                        .contains(searchQuery.lowercase(Locale.getDefault()))
+                pkg.label
+                    .lowercase(Locale.getDefault())
+                    .contains(searchQuery.lowercase(Locale.getDefault()))
         }
     }
 
@@ -70,35 +74,35 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
         var loadedPackages = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
         val startTime = System.currentTimeMillis()
         viewModelScope.launch(Dispatchers.IO) {
-            while ((loadedPackages.isEmpty() || loadedPackages.size == 1)
-                && System.currentTimeMillis() - startTime < 10000
+            while (
+                (loadedPackages.isEmpty() || loadedPackages.size == 1) &&
+                    System.currentTimeMillis() - startTime < 10000
             ) {
                 loadedPackages = pm.getInstalledPackages(PackageManager.GET_PERMISSIONS)
                 delay(500)
             }
-            val list = loadedPackages.asSequence()
-                .mapNotNull {
-                    if (it.packageName == appPackageName) return@mapNotNull null
-                    val appInfo = it.applicationInfo ?: return@mapNotNull null
-                    val hasInternetPermission =
-                        it.requestedPermissions?.contains(Manifest.permission.INTERNET) == true
-                    if (!hasInternetPermission) return@mapNotNull null
-                    val isSystemApp = appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0
-                    val label = appInfo.loadLabel(pm).toString()
-                    val icon = appInfo.loadIcon(pm) ?: pm.defaultActivityIcon
-                    Package(
-                        selected = apps.contains(it.packageName),
-                        label = label,
-                        icon = icon,
-                        packageName = it.packageName,
-                        isSystemApp = isSystemApp
-                    )
-                }
-                .sortedWith(
-                    compareByDescending<Package> { it.selected }
-                        .thenBy { it.label }
-                )
-                .toList()
+            val list =
+                loadedPackages
+                    .asSequence()
+                    .mapNotNull {
+                        if (it.packageName == appPackageName) return@mapNotNull null
+                        val appInfo = it.applicationInfo ?: return@mapNotNull null
+                        val hasInternetPermission =
+                            it.requestedPermissions?.contains(Manifest.permission.INTERNET) == true
+                        if (!hasInternetPermission) return@mapNotNull null
+                        val isSystemApp = appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0
+                        val label = appInfo.loadLabel(pm).toString()
+                        val icon = appInfo.loadIcon(pm) ?: pm.defaultActivityIcon
+                        Package(
+                            selected = apps.contains(it.packageName),
+                            label = label,
+                            icon = icon,
+                            packageName = it.packageName,
+                            isSystemApp = isSystemApp,
+                        )
+                    }
+                    .sortedWith(compareByDescending<Package> { it.selected }.thenBy { it.label })
+                    .toList()
             withContext(Dispatchers.Main) {
                 packageList.clear()
                 packageList.addAll(list)
@@ -138,7 +142,9 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText("App List", exportString)
         clipboard.setPrimaryClip(clip)
-        _uiEvent.trySend(AppListViewUiEvent.ShowSnackbar(context.getString(R.string.export_success)))
+        _uiEvent.trySend(
+            AppListViewUiEvent.ShowSnackbar(context.getString(R.string.export_success))
+        )
     }
 
     fun importAppsFromClipboard(context: Context) {
@@ -164,18 +170,34 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
                         packageList.addAll(updatedPackageList)
                         _isChanged = true
                         saveChanges()
-                        _uiEvent.trySend(AppListViewUiEvent.ShowSnackbar(context.getString(R.string.import_success)))
+                        _uiEvent.trySend(
+                            AppListViewUiEvent.ShowSnackbar(
+                                context.getString(R.string.import_success)
+                            )
+                        )
                     } else {
-                        _uiEvent.trySend(AppListViewUiEvent.ShowSnackbar(context.getString(R.string.import_invalid_format)))
+                        _uiEvent.trySend(
+                            AppListViewUiEvent.ShowSnackbar(
+                                context.getString(R.string.import_invalid_format)
+                            )
+                        )
                     }
                 } else {
-                    _uiEvent.trySend(AppListViewUiEvent.ShowSnackbar(context.getString(R.string.import_invalid_format)))
+                    _uiEvent.trySend(
+                        AppListViewUiEvent.ShowSnackbar(
+                            context.getString(R.string.import_invalid_format)
+                        )
+                    )
                 }
             } else {
-                _uiEvent.trySend(AppListViewUiEvent.ShowSnackbar(context.getString(R.string.import_failed)))
+                _uiEvent.trySend(
+                    AppListViewUiEvent.ShowSnackbar(context.getString(R.string.import_failed))
+                )
             }
         } else {
-            _uiEvent.trySend(AppListViewUiEvent.ShowSnackbar(context.getString(R.string.import_failed)))
+            _uiEvent.trySend(
+                AppListViewUiEvent.ShowSnackbar(context.getString(R.string.import_failed))
+            )
         }
     }
 

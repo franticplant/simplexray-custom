@@ -1,12 +1,33 @@
+# Gradle
 .gradle
 .kotlin
-.idea
-app/.externalNativeBuild
-app/build
-app/debug
-app/release
-app/src/main/jniLibs
-app/src/main/jni/hev-socks5-tunnel
+build/
 local.properties
+
+# IDEs
+.idea
+.vscode
+*.iml
+
+# Native build outputs and downloaded/built native code
+app/.cxx
+app/.externalNativeBuild
+app/src/main/jniLibs
 app/src/main/assets/geoip.dat
 app/src/main/assets/geosite.dat
+/.xray-src/
+
+# Release outputs
+*.apk
+*.aab
+dist/
+
+# Signing material (debug.keystore is public and intentionally committed)
+store.properties
+*.jks
+*.p12
+*.pk8
+*.pem
+*.pfx
+
+.DS_Store

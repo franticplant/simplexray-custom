@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.ui.util
 
 import androidx.compose.material3.MaterialTheme
@@ -40,9 +43,10 @@ fun bracketMatcherTransformation(textFieldValue: TextFieldValue): VisualTransfor
 }
 
 private fun findMatchingBrackets(text: String, cursor: Int): Pair<Int, Int>? {
-    val charIndex = (cursor - 1).takeIf { it >= 0 && text[it] in ALL_BRACKETS }
-        ?: cursor.takeIf { it < text.length && text[it] in ALL_BRACKETS }
-        ?: return null
+    val charIndex =
+        (cursor - 1).takeIf { it >= 0 && text[it] in ALL_BRACKETS }
+            ?: cursor.takeIf { it < text.length && text[it] in ALL_BRACKETS }
+            ?: return null
 
     return when (val char = text[charIndex]) {
         in OPEN_BRACKETS -> findClosingBracket(text, charIndex, char)?.let { charIndex to it }

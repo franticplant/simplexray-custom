@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.ui.navigation
 
 import android.util.Log
@@ -34,41 +37,46 @@ import java.io.File
 
 private const val TAG = "AppNavGraph"
 
-private val BOTTOM_NAV_ROUTE_INDEX = mapOf(
-    ROUTE_STATS to 0,
-    ROUTE_CONFIG to 1,
-    ROUTE_LOG to 2,
-    ROUTE_SETTINGS to 3
-)
+private val BOTTOM_NAV_ROUTE_INDEX =
+    mapOf(
+        ROUTE_STATS to 0,
+        ROUTE_CONFIG to 1,
+        ROUTE_LOG to 2,
+        ROUTE_SETTINGS to 3,
+    )
 
 private fun NavBackStackEntry.routeIndex(): Int =
     destination.route?.let { BOTTOM_NAV_ROUTE_INDEX[it] } ?: 0
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.horizontalSlideEnter(): EnterTransition {
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.horizontalSlideEnter():
+    EnterTransition {
     val targetIndex = targetState.routeIndex()
     val initialIndex = initialState.routeIndex()
-    val direction = if (targetIndex > initialIndex) {
-        AnimatedContentTransitionScope.SlideDirection.Start
-    } else {
-        AnimatedContentTransitionScope.SlideDirection.End
-    }
+    val direction =
+        if (targetIndex > initialIndex) {
+            AnimatedContentTransitionScope.SlideDirection.Start
+        } else {
+            AnimatedContentTransitionScope.SlideDirection.End
+        }
     return slideIntoContainer(
         towards = direction,
-        animationSpec = tween(200, easing = FastOutSlowInEasing)
+        animationSpec = tween(200, easing = FastOutSlowInEasing),
     ) + fadeIn(animationSpec = tween(200))
 }
 
-private fun AnimatedContentTransitionScope<NavBackStackEntry>.horizontalSlideExit(): ExitTransition {
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.horizontalSlideExit():
+    ExitTransition {
     val targetIndex = targetState.routeIndex()
     val initialIndex = initialState.routeIndex()
-    val direction = if (targetIndex > initialIndex) {
-        AnimatedContentTransitionScope.SlideDirection.Start
-    } else {
-        AnimatedContentTransitionScope.SlideDirection.End
-    }
+    val direction =
+        if (targetIndex > initialIndex) {
+            AnimatedContentTransitionScope.SlideDirection.Start
+        } else {
+            AnimatedContentTransitionScope.SlideDirection.End
+        }
     return slideOutOfContainer(
         towards = direction,
-        animationSpec = tween(200, easing = FastOutSlowInEasing)
+        animationSpec = tween(200, easing = FastOutSlowInEasing),
     ) + fadeOut(animationSpec = tween(150))
 }
 
@@ -105,19 +113,19 @@ fun BottomNavHost(
     geositeFilePickerLauncher: ActivityResultLauncher<Array<String>>,
     logListState: LazyListState,
     configListState: LazyListState,
-    settingsScrollState: ScrollState
+    settingsScrollState: ScrollState,
 ) {
     NavHost(
         navController = navController,
         startDestination = ROUTE_STATS,
-        modifier = Modifier.padding(paddingValues)
+        modifier = Modifier.padding(paddingValues),
     ) {
         composable(
             route = ROUTE_STATS,
             enterTransition = { enterTransition() },
             exitTransition = { exitTransition() },
             popEnterTransition = { popEnterTransition() },
-            popExitTransition = { popExitTransition() }
+            popExitTransition = { popExitTransition() },
         ) {
             DashboardScreen(mainViewModel = mainViewModel)
         }
@@ -127,14 +135,14 @@ fun BottomNavHost(
             enterTransition = { enterTransition() },
             exitTransition = { exitTransition() },
             popEnterTransition = { popEnterTransition() },
-            popExitTransition = { popExitTransition() }
+            popExitTransition = { popExitTransition() },
         ) {
             ConfigScreen(
                 onReloadConfig = createReloadConfigCallback(mainViewModel),
                 onEditConfigClick = createEditConfigCallback(mainViewModel),
                 onDeleteConfigClick = onDeleteConfigClick,
                 mainViewModel = mainViewModel,
-                listState = configListState
+                listState = configListState,
             )
         }
 
@@ -143,11 +151,11 @@ fun BottomNavHost(
             enterTransition = { enterTransition() },
             exitTransition = { exitTransition() },
             popEnterTransition = { popEnterTransition() },
-            popExitTransition = { popExitTransition() }
+            popExitTransition = { popExitTransition() },
         ) {
             LogScreen(
                 logViewModel = logViewModel,
-                listState = logListState
+                listState = logListState,
             )
         }
 
@@ -156,13 +164,13 @@ fun BottomNavHost(
             enterTransition = { enterTransition() },
             exitTransition = { exitTransition() },
             popEnterTransition = { popEnterTransition() },
-            popExitTransition = { popExitTransition() }
+            popExitTransition = { popExitTransition() },
         ) {
             SettingsScreen(
                 mainViewModel = mainViewModel,
                 geoipFilePickerLauncher = geoipFilePickerLauncher,
                 geositeFilePickerLauncher = geositeFilePickerLauncher,
-                scrollState = settingsScrollState
+                scrollState = settingsScrollState,
             )
         }
     }

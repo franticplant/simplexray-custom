@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.common
 
 import android.content.Context
@@ -10,8 +13,8 @@ import com.simplexray.an.R
 import com.simplexray.an.service.TProxyService
 import com.simplexray.an.viewmodel.LogViewModel
 import com.simplexray.an.viewmodel.MainViewModel
-import kotlinx.coroutines.launch
 import java.io.File
+import kotlinx.coroutines.launch
 
 data class MainScreenCallbacks(
     val onCreateNewConfigFileAndEdit: () -> Unit,
@@ -20,7 +23,7 @@ data class MainScreenCallbacks(
     val onPerformBackup: () -> Unit,
     val onPerformRestore: () -> Unit,
     val onDeleteConfigClick: (File, () -> Unit) -> Unit,
-    val onSwitchVpnService: () -> Unit
+    val onSwitchVpnService: () -> Unit,
 )
 
 @Composable
@@ -28,10 +31,9 @@ fun rememberMainScreenCallbacks(
     mainViewModel: MainViewModel,
     logViewModel: LogViewModel,
     launchers: MainScreenLaunchers,
-    applicationContext: Context
+    applicationContext: Context,
 ): MainScreenCallbacks {
-    val scope =
-        rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
     val onCreateNewConfigFileAndEdit: () -> Unit = {
         scope.launch {
             val filePath = mainViewModel.createConfigFile()
@@ -59,7 +61,7 @@ fun rememberMainScreenCallbacks(
                         FileProvider.getUriForFile(
                             applicationContext,
                             "com.simplexray.an.fileprovider",
-                            logFile
+                            logFile,
                         )
                     val shareIntent = Intent(Intent.ACTION_SEND)
                     shareIntent.setType("text/plain")
@@ -68,14 +70,14 @@ fun rememberMainScreenCallbacks(
                     val chooserIntent =
                         Intent.createChooser(
                             shareIntent,
-                            applicationContext.getString(R.string.export)
+                            applicationContext.getString(R.string.export),
                         )
                     mainViewModel.shareIntent(chooserIntent, applicationContext.packageManager)
                 } catch (e: IllegalArgumentException) {
                     Log.e(
                         "MainActivity",
                         "Error getting Uri for file using FileProvider during export.",
-                        e
+                        e,
                     )
                     mainViewModel.showExportFailedSnackbar()
                 }
@@ -95,7 +97,7 @@ fun rememberMainScreenCallbacks(
         launchers.openFileLauncher.launch(
             arrayOf(
                 "application/octet-stream",
-                "*/*"
+                "*/*",
             )
         )
     }
@@ -127,6 +129,6 @@ fun rememberMainScreenCallbacks(
         onPerformBackup = onPerformBackup,
         onPerformRestore = onPerformRestore,
         onDeleteConfigClick = onDeleteConfigClick,
-        onSwitchVpnService = onSwitchVpnService
+        onSwitchVpnService = onSwitchVpnService,
     )
 }

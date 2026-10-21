@@ -1,10 +1,13 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.core
 
 enum class InstanceStatus {
     STOPPED,
     STARTING,
     RUNNING,
-    ERROR
+    ERROR,
 }
 
 data class XrayInstanceInfo(
@@ -19,5 +22,5 @@ data class XrayInstanceInfo(
     val numGoroutine: Int = 0,
     val alloc: Long = 0,
     val uptime: Int = 0,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
 )

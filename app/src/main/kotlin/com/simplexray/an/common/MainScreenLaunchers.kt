@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.common
 
 import android.content.Intent
@@ -18,49 +21,49 @@ data class MainScreenLaunchers(
     val openFileLauncher: ActivityResultLauncher<Array<String>>,
     val vpnPrepareLauncher: ActivityResultLauncher<Intent>,
     val geoipFilePickerLauncher: ActivityResultLauncher<Array<String>>,
-    val geositeFilePickerLauncher: ActivityResultLauncher<Array<String>>
+    val geositeFilePickerLauncher: ActivityResultLauncher<Array<String>>,
 )
 
 @Composable
 fun rememberMainScreenLaunchers(mainViewModel: MainViewModel): MainScreenLaunchers {
     val scope = rememberCoroutineScope()
 
-    val createFileLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/octet-stream")
-    ) { uri: Uri? ->
-        if (uri != null) {
-            scope.launch {
-                mainViewModel.handleBackupFileCreationResult(uri)
+    val createFileLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument("application/octet-stream")
+        ) { uri: Uri? ->
+            if (uri != null) {
+                scope.launch {
+                    mainViewModel.handleBackupFileCreationResult(uri)
+                }
+            } else {
+                Log.w("MainActivity", "Backup file creation cancelled or failed (URI is null).")
+                mainViewModel.clearCompressedBackupData()
             }
-        } else {
-            Log.w("MainActivity", "Backup file creation cancelled or failed (URI is null).")
-            mainViewModel.clearCompressedBackupData()
         }
-    }
 
-    val openFileLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            scope.launch {
-                mainViewModel.startRestoreTask(uri)
+    val openFileLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+            if (uri != null) {
+                scope.launch {
+                    mainViewModel.startRestoreTask(uri)
+                }
+            } else {
+                Log.w("MainActivity", "Restore file selection cancelled or failed (URI is null).")
             }
-        } else {
-            Log.w("MainActivity", "Restore file selection cancelled or failed (URI is null).")
         }
-    }
 
-    val vpnPrepareLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result: ActivityResult ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            mainViewModel.setControlMenuClickable(true)
-            mainViewModel.setServiceEnabled(true)
-            mainViewModel.startTProxyService(TProxyService.ACTION_CONNECT)
-        } else {
-            mainViewModel.setControlMenuClickable(true)
+    val vpnPrepareLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            result: ActivityResult ->
+            if (result.resultCode == android.app.Activity.RESULT_OK) {
+                mainViewModel.setControlMenuClickable(true)
+                mainViewModel.setServiceEnabled(true)
+                mainViewModel.startTProxyService(TProxyService.ACTION_CONNECT)
+            } else {
+                mainViewModel.setControlMenuClickable(true)
+            }
         }
-    }
 
     val geoipFilePickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -89,6 +92,6 @@ fun rememberMainScreenLaunchers(mainViewModel: MainViewModel): MainScreenLaunche
         openFileLauncher = openFileLauncher,
         vpnPrepareLauncher = vpnPrepareLauncher,
         geoipFilePickerLauncher = geoipFilePickerLauncher,
-        geositeFilePickerLauncher = geositeFilePickerLauncher
+        geositeFilePickerLauncher = geositeFilePickerLauncher,
     )
 }

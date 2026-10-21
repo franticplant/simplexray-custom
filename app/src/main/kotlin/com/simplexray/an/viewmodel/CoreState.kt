@@ -1,8 +1,11 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.viewmodel
 
 data class TrafficState(
     val uplink: Long,
-    val downlink: Long
+    val downlink: Long,
 )
 
 data class CoreStatsState(
@@ -17,5 +20,5 @@ data class CoreStatsState(
     val frees: Long = 0,
     val liveObjects: Long = 0,
     val pauseTotalNs: Long = 0,
-    val uptime: Int = 0
+    val uptime: Int = 0,
 )

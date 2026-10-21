@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.common
 
 import com.simplexray.an.viewmodel.TrafficState
@@ -7,44 +10,45 @@ import com.xray.app.stats.command.SysStatsRequest
 import com.xray.app.stats.command.SysStatsResponse
 import io.grpc.ManagedChannel
 import io.grpc.ManagedChannelBuilder
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.io.Closeable
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class CoreStatsClient(private val channel: ManagedChannel) : Closeable {
     private val blockingStub: StatsServiceGrpc.StatsServiceBlockingStub =
         StatsServiceGrpc.newBlockingStub(channel)
 
-    suspend fun getSystemStats(): SysStatsResponse? = withContext(Dispatchers.IO) {
-        runCatching {
-            val request = SysStatsRequest.newBuilder().build()
-            blockingStub.getSysStats(request)
-        }.getOrNull()
-    }
+    suspend fun getSystemStats(): SysStatsResponse? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val request = SysStatsRequest.newBuilder().build()
+                blockingStub.getSysStats(request)
+            }
+                .getOrNull()
+        }
 
-    suspend fun getTraffic(): TrafficState? = withContext(Dispatchers.IO) {
-        val request = QueryStatsRequest.newBuilder()
-            .setPattern("outbound")
-            .setReset(false)
-            .build()
+    suspend fun getTraffic(): TrafficState? =
+        withContext(Dispatchers.IO) {
+            val request =
+                QueryStatsRequest.newBuilder().setPattern("outbound").setReset(false).build()
 
-        runCatching { blockingStub.queryStats(request) }
-            .getOrNull()
-            ?.statList
-            ?.groupBy {
-                when {
-                    it.name.endsWith("uplink") -> "uplink"
-                    it.name.endsWith("downlink") -> "downlink"
-                    else -> "other"
+            runCatching { blockingStub.queryStats(request) }
+                .getOrNull()
+                ?.statList
+                ?.groupBy {
+                    when {
+                        it.name.endsWith("uplink") -> "uplink"
+                        it.name.endsWith("downlink") -> "downlink"
+                        else -> "other"
+                    }
                 }
-            }
-            ?.let { groups ->
-                val uplink = groups["uplink"]?.sumOf { it.value } ?: 0L
-                val downlink = groups["downlink"]?.sumOf { it.value } ?: 0L
-                TrafficState(uplink, downlink)
-            }
-    }
+                ?.let { groups ->
+                    val uplink = groups["uplink"]?.sumOf { it.value } ?: 0L
+                    val downlink = groups["downlink"]?.sumOf { it.value } ?: 0L
+                    TrafficState(uplink, downlink)
+                }
+        }
 
     override fun close() {
         channel.shutdown().awaitTermination(5, TimeUnit.SECONDS)
@@ -52,9 +56,7 @@ class CoreStatsClient(private val channel: ManagedChannel) : Closeable {
 
     companion object {
         fun create(host: String, port: Int): CoreStatsClient {
-            val channel = ManagedChannelBuilder.forAddress(host, port)
-                .usePlaintext()
-                .build()
+            val channel = ManagedChannelBuilder.forAddress(host, port).usePlaintext().build()
             return CoreStatsClient(channel)
         }
     }

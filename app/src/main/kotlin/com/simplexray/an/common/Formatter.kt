@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.common
 
 import kotlin.math.ln
@@ -17,12 +20,13 @@ fun formatNumber(count: Long): String {
     return "%.1f%c".format(count / 1000.0.pow(exp), suffix[exp - 1])
 }
 
-fun formatUptime(seconds: Int): String = when {
-    seconds < 0 -> "N/A"
-    else -> {
-        val hours = seconds / 3600
-        val minutes = (seconds % 3600) / 60
-        val secs = seconds % 60
-        "%02d:%02d:%02d".format(hours, minutes, secs)
+fun formatUptime(seconds: Int): String =
+    when {
+        seconds < 0 -> "N/A"
+        else -> {
+            val hours = seconds / 3600
+            val minutes = (seconds % 3600) / 60
+            val secs = seconds % 60
+            "%02d:%02d:%02d".format(hours, minutes, secs)
+        }
     }
-}

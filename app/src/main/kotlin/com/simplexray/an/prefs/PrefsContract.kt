@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.prefs
 
 import android.net.Uri
@@ -10,10 +13,8 @@ object PrefsContract {
 
     object PrefsEntry : BaseColumns {
         val CONTENT_URI: Uri = BASE_CONTENT_URI.buildUpon().appendPath(PATH_PREFS).build()
-        const val CONTENT_TYPE: String =
-            "vnd.android.cursor.dir/vnd.$AUTHORITY.$PATH_PREFS"
-        const val CONTENT_ITEM_TYPE: String =
-            "vnd.android.cursor.item/vnd.$AUTHORITY.$PATH_PREFS"
+        const val CONTENT_TYPE: String = "vnd.android.cursor.dir/vnd.$AUTHORITY.$PATH_PREFS"
+        const val CONTENT_ITEM_TYPE: String = "vnd.android.cursor.item/vnd.$AUTHORITY.$PATH_PREFS"
         const val COLUMN_PREF_KEY: String = "pref_key"
         const val COLUMN_PREF_VALUE: String = "pref_value"
         const val COLUMN_PREF_TYPE: String = "pref_type"

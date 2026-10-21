@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.data.source
 
 import android.content.Context
@@ -87,7 +90,7 @@ class LogFileManager(context: Context) {
         }
         Log.d(
             TAG,
-            "Log file size ($currentSize bytes) exceeds limit ($MAX_LOG_SIZE_BYTES bytes). Truncating oldest $TRUNCATE_SIZE_BYTES bytes."
+            "Log file size ($currentSize bytes) exceeds limit ($MAX_LOG_SIZE_BYTES bytes). Truncating oldest $TRUNCATE_SIZE_BYTES bytes.",
         )
         try {
             val startByteToKeep = currentSize - TRUNCATE_SIZE_BYTES
@@ -100,7 +103,7 @@ class LogFileManager(context: Context) {
                 } else {
                     Log.w(
                         TAG,
-                        "Could not read line from calculated start position for truncation. Clearing file as a fallback."
+                        "Could not read line from calculated start position for truncation. Clearing file as a fallback.",
                     )
                     clearLogs()
                     return
@@ -113,7 +116,7 @@ class LogFileManager(context: Context) {
                             sourceChannel.transferTo(
                                 firstLineToKeepStartPos,
                                 bytesToTransfer,
-                                destChannel
+                                destChannel,
                             )
                         }
                     }
@@ -121,7 +124,9 @@ class LogFileManager(context: Context) {
                         if (tempLogFile.renameTo(logFile)) {
                             Log.d(
                                 TAG,
-                                "Log file truncated successfully. New size: " + logFile.length() + " bytes."
+                                "Log file truncated successfully. New size: " +
+                                    logFile.length() +
+                                    " bytes.",
                             )
                         } else {
                             Log.e(TAG, "Failed to rename temp log file to original file.")

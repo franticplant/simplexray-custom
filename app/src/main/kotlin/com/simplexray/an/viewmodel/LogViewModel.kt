@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.viewmodel
 
 import android.app.Application
@@ -13,6 +16,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.simplexray.an.data.source.LogFileManager
 import com.simplexray.an.service.TProxyService
+import java.io.File
+import java.util.Collections
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,14 +30,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.util.Collections
 
 private const val TAG = "LogViewModel"
 
 @OptIn(FlowPreview::class)
-class LogViewModel(application: Application) :
-    AndroidViewModel(application) {
+class LogViewModel(application: Application) : AndroidViewModel(application) {
 
     private val logFileManager = LogFileManager(application)
 
@@ -58,24 +60,28 @@ class LogViewModel(application: Application) :
 
     init {
         Log.d(TAG, "LogViewModel initialized.")
-        logUpdateReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context, intent: Intent) {
-                if (TProxyService.ACTION_LOG_UPDATE == intent.action) {
-                    val newLogs = intent.getStringArrayListExtra(TProxyService.EXTRA_LOG_DATA)
-                    if (!newLogs.isNullOrEmpty()) {
-                        Log.d(TAG, "Received log update broadcast with ${newLogs.size} entries.")
-                        viewModelScope.launch {
-                            processNewLogs(newLogs)
+        logUpdateReceiver =
+            object : BroadcastReceiver() {
+                override fun onReceive(context: Context, intent: Intent) {
+                    if (TProxyService.ACTION_LOG_UPDATE == intent.action) {
+                        val newLogs = intent.getStringArrayListExtra(TProxyService.EXTRA_LOG_DATA)
+                        if (!newLogs.isNullOrEmpty()) {
+                            Log.d(
+                                TAG,
+                                "Received log update broadcast with ${newLogs.size} entries.",
+                            )
+                            viewModelScope.launch {
+                                processNewLogs(newLogs)
+                            }
+                        } else {
+                            Log.w(
+                                TAG,
+                                "Received log update broadcast, but log data list is null or empty.",
+                            )
                         }
-                    } else {
-                        Log.w(
-                            TAG,
-                            "Received log update broadcast, but log data list is null or empty."
-                        )
                     }
                 }
             }
-        }
         viewModelScope.launch {
             logEntries.collect { entries ->
                 _hasLogsToExport.value = entries.isNotEmpty() && logFileManager.logFile.exists()
@@ -83,12 +89,12 @@ class LogViewModel(application: Application) :
         }
         viewModelScope.launch {
             combine(
-                logEntries,
-                searchQuery.debounce(200)
-            ) { logs, query ->
-                if (query.isBlank()) logs
-                else logs.filter { it.contains(query, ignoreCase = true) }
-            }
+                    logEntries,
+                    searchQuery.debounce(200),
+                ) { logs, query ->
+                    if (query.isBlank()) logs
+                    else logs.filter { it.contains(query, ignoreCase = true) }
+                }
                 .flowOn(Dispatchers.Default)
                 .collect { _filteredEntries.value = it }
         }
@@ -114,11 +120,12 @@ class LogViewModel(application: Application) :
         viewModelScope.launch(Dispatchers.IO) {
             Log.d(TAG, "Loading logs.")
             val savedLogData = logFileManager.readLogs()
-            val initialLogs = if (!savedLogData.isNullOrEmpty()) {
-                savedLogData.split("\n").filter { it.trim().isNotEmpty() }
-            } else {
-                emptyList()
-            }
+            val initialLogs =
+                if (!savedLogData.isNullOrEmpty()) {
+                    savedLogData.split("\n").filter { it.trim().isNotEmpty() }
+                } else {
+                    emptyList()
+                }
             processInitialLogs(initialLogs)
         }
     }
@@ -160,9 +167,7 @@ class LogViewModel(application: Application) :
     }
 }
 
-class LogViewModelFactory(
-    private val application: Application
-) : ViewModelProvider.Factory {
+class LogViewModelFactory(private val application: Application) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(LogViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")

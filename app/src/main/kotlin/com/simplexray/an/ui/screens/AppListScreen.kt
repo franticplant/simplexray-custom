@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.ui.screens
 
 import android.graphics.Bitmap
@@ -112,7 +115,7 @@ fun AppListScreen(viewModel: AppListViewModel, onBackClick: () -> Unit) {
                 is AppListViewUiEvent.ShowSnackbar -> {
                     snackbarHostState.showSnackbar(
                         event.message,
-                        duration = SnackbarDuration.Short
+                        duration = SnackbarDuration.Short,
                     )
                 }
             }
@@ -129,29 +132,30 @@ fun AppListScreen(viewModel: AppListViewModel, onBackClick: () -> Unit) {
                         TextField(
                             value = searchQuery,
                             onValueChange = { viewModel.onSearchQueryChange(it) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(focusRequester),
+                            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
                             placeholder = { Text(stringResource(R.string.search)) },
                             singleLine = true,
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                                disabledContainerColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                                disabledIndicatorColor = Color.Transparent
-                            )
+                            colors =
+                                TextFieldDefaults.colors(
+                                    focusedContainerColor = Color.Transparent,
+                                    unfocusedContainerColor = Color.Transparent,
+                                    disabledContainerColor = Color.Transparent,
+                                    focusedIndicatorColor = Color.Transparent,
+                                    unfocusedIndicatorColor = Color.Transparent,
+                                    disabledIndicatorColor = Color.Transparent,
+                                ),
                         )
                     },
                     navigationIcon = {
-                        IconButton(onClick = {
-                            isSearching = false
-                            viewModel.onSearchQueryChange("")
-                        }) {
+                        IconButton(
+                            onClick = {
+                                isSearching = false
+                                viewModel.onSearchQueryChange("")
+                            }
+                        ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.close_search)
+                                contentDescription = stringResource(R.string.close_search),
                             )
                         }
                     },
@@ -160,12 +164,12 @@ fun AppListScreen(viewModel: AppListViewModel, onBackClick: () -> Unit) {
                             IconButton(onClick = { viewModel.onSearchQueryChange("") }) {
                                 Icon(
                                     Icons.Default.Clear,
-                                    contentDescription = stringResource(R.string.clear_search)
+                                    contentDescription = stringResource(R.string.clear_search),
                                 )
                             }
                         }
                     },
-                    scrollBehavior = scrollBehavior
+                    scrollBehavior = scrollBehavior,
                 )
             } else {
                 TopAppBar(
@@ -176,7 +180,7 @@ fun AppListScreen(viewModel: AppListViewModel, onBackClick: () -> Unit) {
                         IconButton(onClick = onBackClick) {
                             Icon(
                                 Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.back)
+                                contentDescription = stringResource(R.string.back),
                             )
                         }
                     },
@@ -184,119 +188,118 @@ fun AppListScreen(viewModel: AppListViewModel, onBackClick: () -> Unit) {
                         IconButton(onClick = { isSearching = true }) {
                             Icon(
                                 painterResource(id = R.drawable.search),
-                                contentDescription = stringResource(R.string.search)
+                                contentDescription = stringResource(R.string.search),
                             )
                         }
                         var showMenu by remember { mutableStateOf(false) }
                         IconButton(onClick = { showMenu = true }) {
                             Icon(
                                 Icons.Default.MoreVert,
-                                contentDescription = stringResource(R.string.more)
+                                contentDescription = stringResource(R.string.more),
                             )
                         }
                         DropdownMenu(
                             expanded = showMenu,
-                            onDismissRequest = { showMenu = false }
+                            onDismissRequest = { showMenu = false },
                         ) {
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.select_all)) },
                                 onClick = {
                                     viewModel.selectAll()
                                     showMenu = false
-                                }
+                                },
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.inverse_selection)) },
                                 onClick = {
                                     viewModel.inverseSelection()
                                     showMenu = false
-                                }
+                                },
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.export_to_clipboard)) },
                                 onClick = {
                                     viewModel.exportAppsToClipboard(context)
                                     showMenu = false
-                                }
+                                },
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.import_from_clipboard)) },
                                 onClick = {
                                     viewModel.importAppsFromClipboard(context)
                                     showMenu = false
-                                }
+                                },
                             )
                             DropdownMenuItem(
                                 text = {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Text(
                                             stringResource(R.string.show_system_apps),
-                                            modifier = Modifier.weight(1f)
+                                            modifier = Modifier.weight(1f),
                                         )
                                         Checkbox(
                                             checked = showSystemApps,
-                                            onCheckedChange = null
+                                            onCheckedChange = null,
                                         )
                                     }
                                 },
                                 onClick = {
                                     viewModel.onShowSystemAppsChange(!showSystemApps)
                                     showMenu = false
-                                })
+                                },
+                            )
 
                             DropdownMenuItem(
                                 text = {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Text(
                                             stringResource(R.string.bypass_selected_apps),
-                                            modifier = Modifier.weight(1f)
+                                            modifier = Modifier.weight(1f),
                                         )
                                         Checkbox(
                                             checked = viewModel.bypassSelectedApps,
-                                            onCheckedChange = null
+                                            onCheckedChange = null,
                                         )
                                     }
                                 },
                                 onClick = {
-                                    viewModel.onBypassSelectedAppsChange(!viewModel.bypassSelectedApps)
+                                    viewModel.onBypassSelectedAppsChange(
+                                        !viewModel.bypassSelectedApps
+                                    )
                                     showMenu = false
-                                }
+                                },
                             )
                         }
                     },
-                    scrollBehavior = scrollBehavior
+                    scrollBehavior = scrollBehavior,
                 )
             }
-        }
+        },
     ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = paddingValues.calculateTopPadding())
-        ) {
+        Box(modifier = Modifier.fillMaxSize().padding(top = paddingValues.calculateTopPadding())) {
             if (isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             } else {
                 LazyColumnScrollbar(
                     state = lazyListState,
-                    settings = ScrollbarDefaults.defaultScrollbarSettings()
+                    settings = ScrollbarDefaults.defaultScrollbarSettings(),
                 ) {
                     LazyColumn(
-                        modifier = Modifier
-                            .fillMaxSize(),
+                        modifier = Modifier.fillMaxSize(),
                         state = lazyListState,
-                        contentPadding = PaddingValues(
-                            top = 16.dp,
-                            bottom = paddingValues.calculateBottomPadding().plus(16.dp),
-                            start = 8.dp,
-                            end = 8.dp
-                        ),
+                        contentPadding =
+                            PaddingValues(
+                                top = 16.dp,
+                                bottom = paddingValues.calculateBottomPadding().plus(16.dp),
+                                start = 8.dp,
+                                end = 8.dp,
+                            ),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         items(filteredList, key = { it.packageName }) { pkg ->
@@ -310,7 +313,7 @@ fun AppListScreen(viewModel: AppListViewModel, onBackClick: () -> Unit) {
                     Text(
                         text = stringResource(R.string.apps_not_found),
                         modifier = Modifier.align(Alignment.Center),
-                        style = MaterialTheme.typography.bodyLarge
+                        style = MaterialTheme.typography.bodyLarge,
                     )
                 }
             }
@@ -320,36 +323,35 @@ fun AppListScreen(viewModel: AppListViewModel, onBackClick: () -> Unit) {
 
 @Composable
 fun AppItem(pkg: Package, onCheckedChange: (Boolean) -> Unit) {
-    val iconBitmap = remember(pkg.icon) {
-        drawableToBitmap(pkg.icon)?.asImageBitmap()
-    }
+    val iconBitmap =
+        remember(pkg.icon) {
+            drawableToBitmap(pkg.icon)?.asImageBitmap()
+        }
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 4.dp)
-            .clip(MaterialTheme.shapes.extraLarge)
-            .clickable { onCheckedChange(!pkg.selected) },
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .clip(MaterialTheme.shapes.extraLarge)
+                .clickable { onCheckedChange(!pkg.selected) },
         shape = MaterialTheme.shapes.extraLarge,
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (pkg.selected) MaterialTheme.colorScheme.secondaryContainer
-            else MaterialTheme.colorScheme.surfaceContainerHighest
-        )
+        colors =
+            CardDefaults.cardColors(
+                containerColor =
+                    if (pkg.selected) MaterialTheme.colorScheme.secondaryContainer
+                    else MaterialTheme.colorScheme.surfaceContainerHighest
+            ),
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             iconBitmap?.let {
                 Image(
                     bitmap = it,
                     contentDescription = stringResource(R.string.app_icon),
-                    modifier = Modifier
-                        .size(40.dp)
-                        .fillMaxHeight(),
-                    contentScale = ContentScale.Crop
+                    modifier = Modifier.size(40.dp).fillMaxHeight(),
+                    contentScale = ContentScale.Crop,
                 )
             }
             Spacer(modifier = Modifier.width(16.dp))
@@ -358,14 +360,14 @@ fun AppItem(pkg: Package, onCheckedChange: (Boolean) -> Unit) {
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
             )
             Spacer(modifier = Modifier.width(16.dp))
             Checkbox(
                 checked = pkg.selected,
                 onCheckedChange = onCheckedChange,
                 enabled = true,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(24.dp),
             )
         }
     }

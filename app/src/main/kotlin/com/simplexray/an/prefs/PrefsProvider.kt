@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.prefs
 
 import android.content.ContentProvider
@@ -23,7 +26,7 @@ class PrefsProvider : ContentProvider() {
         projection: Array<String>?,
         selection: String?,
         selectionArgs: Array<String>?,
-        sortOrder: String?
+        sortOrder: String?,
     ): Cursor {
         val match = sUriMatcher.match(uri)
         var key: String? = null
@@ -32,44 +35,52 @@ class PrefsProvider : ContentProvider() {
         } else if (match != PREFS) {
             throw UnsupportedOperationException("Unknown uri: $uri")
         }
-        val cursor = MatrixCursor(
-            arrayOf(
-                PrefsContract.PrefsEntry.COLUMN_PREF_KEY,
-                PrefsContract.PrefsEntry.COLUMN_PREF_VALUE,
-                PrefsContract.PrefsEntry.COLUMN_PREF_TYPE
+        val cursor =
+            MatrixCursor(
+                arrayOf(
+                    PrefsContract.PrefsEntry.COLUMN_PREF_KEY,
+                    PrefsContract.PrefsEntry.COLUMN_PREF_VALUE,
+                    PrefsContract.PrefsEntry.COLUMN_PREF_TYPE,
+                )
             )
-        )
         if (key != null) {
             var value: Any? = null
             var type: String? = null
             if (prefs.contains(key)) {
-                val valueAndType: Pair<Any?, String?>? = try {
-                    prefs.getString(key, null)?.let { v -> Pair<Any?, String?>(v, "String") }
-                } catch (e: ClassCastException) {
-                    null
-                } ?: try {
-                    Pair<Any?, String?>(prefs.getBoolean(key, false), "Boolean")
-                } catch (e: ClassCastException) {
-                    null
-                } ?: try {
-                    Pair<Any?, String?>(prefs.getInt(key, 0), "Integer")
-                } catch (e: ClassCastException) {
-                    null
-                } ?: try {
-                    Pair<Any?, String?>(prefs.getLong(key, 0L), "Long")
-                } catch (e: ClassCastException) {
-                    null
-                } ?: try {
-                    Pair<Any?, String?>(prefs.getFloat(key, 0f), "Float")
-                } catch (e: ClassCastException) {
-                    null
-                } ?: try {
-                    prefs.getStringSet(key, null)
-                        ?.let { v -> Pair<Any?, String?>(v, "StringSet") }
-                } catch (e: ClassCastException) {
-                    Log.w(TAG, "Error retrieving key '$key' as StringSet, giving up", e)
-                    null
-                }
+                val valueAndType: Pair<Any?, String?>? =
+                    try {
+                        prefs.getString(key, null)?.let { v -> Pair<Any?, String?>(v, "String") }
+                    } catch (e: ClassCastException) {
+                        null
+                    }
+                        ?: try {
+                            Pair<Any?, String?>(prefs.getBoolean(key, false), "Boolean")
+                        } catch (e: ClassCastException) {
+                            null
+                        }
+                        ?: try {
+                            Pair<Any?, String?>(prefs.getInt(key, 0), "Integer")
+                        } catch (e: ClassCastException) {
+                            null
+                        }
+                        ?: try {
+                            Pair<Any?, String?>(prefs.getLong(key, 0L), "Long")
+                        } catch (e: ClassCastException) {
+                            null
+                        }
+                        ?: try {
+                            Pair<Any?, String?>(prefs.getFloat(key, 0f), "Float")
+                        } catch (e: ClassCastException) {
+                            null
+                        }
+                        ?: try {
+                            prefs.getStringSet(key, null)?.let { v ->
+                                Pair<Any?, String?>(v, "StringSet")
+                            }
+                        } catch (e: ClassCastException) {
+                            Log.w(TAG, "Error retrieving key '$key' as StringSet, giving up", e)
+                            null
+                        }
 
                 value = valueAndType?.first
                 type = valueAndType?.second
@@ -99,13 +110,20 @@ class PrefsProvider : ContentProvider() {
     }
 
     override fun update(
-        uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<String>?
+        uri: Uri,
+        values: ContentValues?,
+        selection: String?,
+        selectionArgs: Array<String>?,
     ): Int {
         val match = sUriMatcher.match(uri)
         var rowsAffected = 0
         if (match == PREFS_WITH_KEY) {
             val key = uri.lastPathSegment
-            if (key != null && values != null && values.containsKey(PrefsContract.PrefsEntry.COLUMN_PREF_VALUE)) {
+            if (
+                key != null &&
+                    values != null &&
+                    values.containsKey(PrefsContract.PrefsEntry.COLUMN_PREF_VALUE)
+            ) {
                 val editor = prefs.edit()
                 when (val value = values[PrefsContract.PrefsEntry.COLUMN_PREF_VALUE]) {
                     is String -> {
@@ -135,7 +153,7 @@ class PrefsProvider : ContentProvider() {
                         } else {
                             Log.e(
                                 TAG,
-                                "Value for key $key is a Set but contains non-String or null elements (putStringSet requires Set<String>)."
+                                "Value for key $key is a Set but contains non-String or null elements (putStringSet requires Set<String>).",
                             )
                         }
                     }
@@ -160,6 +178,7 @@ class PrefsProvider : ContentProvider() {
         private const val PREFS = 100
         private const val PREFS_WITH_KEY = 101
         private val sUriMatcher = buildUriMatcher()
+
         private fun buildUriMatcher(): UriMatcher {
             val matcher = UriMatcher(UriMatcher.NO_MATCH)
             val authority = PrefsContract.AUTHORITY

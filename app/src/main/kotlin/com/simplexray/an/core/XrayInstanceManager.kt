@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.core
 
 import android.content.Context
@@ -6,11 +9,6 @@ import com.simplexray.an.common.ConfigUtils
 import com.simplexray.an.common.CoreStatsClient
 import com.simplexray.an.prefs.Preferences
 import com.simplexray.an.service.TProxyService
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -18,6 +16,11 @@ import java.io.InterruptedIOException
 import java.net.ServerSocket
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.Volatile
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 private const val TAG = "XrayInstanceManager"
 
@@ -26,16 +29,13 @@ class RunningInstance(
     val configName: String,
     val isPrimaryVpn: Boolean,
     val apiAddress: String,
-    val apiPort: Int
+    val apiPort: Int,
 ) {
-    @Volatile
-    var process: Process? = null
+    @Volatile var process: Process? = null
 
-    @Volatile
-    var status: InstanceStatus = InstanceStatus.STARTING
+    @Volatile var status: InstanceStatus = InstanceStatus.STARTING
 
-    @Volatile
-    var errorMessage: String? = null
+    @Volatile var errorMessage: String? = null
 
     var statsClient: CoreStatsClient? = null
     var uplink: Long = 0
@@ -59,7 +59,7 @@ class RunningInstance(
             numGoroutine = numGoroutine,
             alloc = alloc,
             uptime = uptime,
-            errorMessage = errorMessage
+            errorMessage = errorMessage,
         )
     }
 }
@@ -78,21 +78,21 @@ object XrayInstanceManager {
     }
 
     private fun findAvailablePort(excludedPorts: Set<Int>): Int? {
-        (10000..65535)
-            .shuffled()
-            .forEach { port ->
-                if (port in excludedPorts) return@forEach
-                runCatching {
-                    ServerSocket(port).use { socket ->
-                        socket.reuseAddress = true
-                    }
-                    port
-                }.onFailure {
+        (10000..65535).shuffled().forEach { port ->
+            if (port in excludedPorts) return@forEach
+            runCatching {
+                ServerSocket(port).use { socket ->
+                    socket.reuseAddress = true
+                }
+                port
+            }
+                .onFailure {
                     Log.d(TAG, "Port $port unavailable: ${it.message}")
-                }.onSuccess {
+                }
+                .onSuccess {
                     return port
                 }
-            }
+        }
         return null
     }
 
@@ -100,7 +100,7 @@ object XrayInstanceManager {
         context: Context,
         configPath: String,
         isPrimaryVpn: Boolean,
-        onLogLine: (tag: String, line: String) -> Unit
+        onLogLine: (tag: String, line: String) -> Unit,
     ): Boolean {
         val configFile = File(configPath)
         if (!configFile.exists()) {
@@ -115,29 +115,35 @@ object XrayInstanceManager {
         val configContent = configFile.readText()
         val extractedPorts = ConfigUtils.extractPortsFromJson(configContent)
 
-        val apiPort = findAvailablePort(extractedPorts) ?: run {
-            Log.e(TAG, "Failed to find available API port for $configName")
-            return false
-        }
+        val apiPort =
+            findAvailablePort(extractedPorts)
+                ?: run {
+                    Log.e(TAG, "Failed to find available API port for $configName")
+                    return false
+                }
 
         val octet2 = (0..255).random()
         val octet3 = (0..255).random()
         val octet4 = (1..254).random()
         val apiAddress = "127.$octet2.$octet3.$octet4"
 
-        val runningInstance = RunningInstance(
-            configPath = configPath,
-            configName = configName,
-            isPrimaryVpn = isPrimaryVpn,
-            apiAddress = apiAddress,
-            apiPort = apiPort
-        )
+        val runningInstance =
+            RunningInstance(
+                configPath = configPath,
+                configName = configName,
+                isPrimaryVpn = isPrimaryVpn,
+                apiAddress = apiAddress,
+                apiPort = apiPort,
+            )
 
         instances[configPath] = runningInstance
 
         runningInstance.scope.launch {
             try {
-                Log.d(TAG, "Launching Xray core instance for $configName on API $apiAddress:$apiPort")
+                Log.d(
+                    TAG,
+                    "Launching Xray core instance for $configName on API $apiAddress:$apiPort",
+                )
                 val libraryDir = TProxyService.getNativeLibraryDir(context) ?: return@launch
                 val xrayExecutable = "$libraryDir/libxray.so"
 

@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.common
 
 import android.util.Log
@@ -11,7 +14,7 @@ object ConfigUtils {
     @Throws(JSONException::class)
     fun formatConfigContent(content: String): String {
         val jsonObject = JSONObject(content)
-        (jsonObject["log"] as? JSONObject)?.apply {
+        jsonObject.optJSONObject("log")?.apply {
             if (has("access") && optString("access") != "none") {
                 remove("access")
                 Log.d(TAG, "Removed log.access")
@@ -88,4 +91,3 @@ object ConfigUtils {
         }
     }
 }
-

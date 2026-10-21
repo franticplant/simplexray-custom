@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -37,27 +40,28 @@ import kotlinx.coroutines.launch
 fun MainScreen(
     mainViewModel: MainViewModel,
     appNavController: NavHostController,
-    snackbarHostState: SnackbarHostState
+    snackbarHostState: SnackbarHostState,
 ) {
     val bottomNavController = rememberNavController()
     val scope = rememberCoroutineScope()
 
     val launchers = rememberMainScreenLaunchers(mainViewModel)
 
-    val logViewModel: LogViewModel = viewModel(
-        factory = LogViewModelFactory(mainViewModel.application)
-    )
+    val logViewModel: LogViewModel =
+        viewModel(factory = LogViewModelFactory(mainViewModel.application))
 
-    val callbacks = rememberMainScreenCallbacks(
-        mainViewModel = mainViewModel,
-        logViewModel = logViewModel,
-        launchers = launchers,
-        applicationContext = mainViewModel.application
-    )
+    val callbacks =
+        rememberMainScreenCallbacks(
+            mainViewModel = mainViewModel,
+            logViewModel = logViewModel,
+            launchers = launchers,
+            applicationContext = mainViewModel.application,
+        )
 
-    val shareLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) {}
+    val shareLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.StartActivityForResult()
+        ) {}
 
     DisposableEffect(mainViewModel) {
         mainViewModel.registerTProxyServiceReceivers()
@@ -78,7 +82,7 @@ fun MainScreen(
                 is MainViewUiEvent.ShowSnackbar -> {
                     snackbarHostState.showSnackbar(
                         event.message,
-                        duration = SnackbarDuration.Short
+                        duration = SnackbarDuration.Short,
                     )
                 }
 
@@ -128,7 +132,7 @@ fun MainScreen(
             onSwitchVpnService = callbacks.onSwitchVpnService,
             logListState = logListState,
             configListState = configListState,
-            settingsScrollState = settingsScrollState
+            settingsScrollState = settingsScrollState,
         ) { paddingValues ->
             BottomNavHost(
                 navController = bottomNavController,
@@ -140,7 +144,7 @@ fun MainScreen(
                 geositeFilePickerLauncher = launchers.geositeFilePickerLauncher,
                 logListState = logListState,
                 configListState = configListState,
-                settingsScrollState = settingsScrollState
+                settingsScrollState = settingsScrollState,
             )
         }
     } else {
@@ -154,7 +158,7 @@ fun MainScreen(
             geositeFilePickerLauncher = launchers.geositeFilePickerLauncher,
             logListState = logListState,
             configListState = configListState,
-            settingsScrollState = settingsScrollState
+            settingsScrollState = settingsScrollState,
         )
     }
 }

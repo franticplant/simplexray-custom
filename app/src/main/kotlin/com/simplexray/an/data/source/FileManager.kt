@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.data.source
 
 import android.app.Application
@@ -14,21 +17,16 @@ import com.simplexray.an.common.ConfigUtils
 import com.simplexray.an.common.FilenameValidator
 import com.simplexray.an.common.configFormat.ConfigFormatConverter
 import com.simplexray.an.prefs.Preferences
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import org.json.JSONException
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
-import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.security.MessageDigest
 import java.security.NoSuchAlgorithmException
 import java.text.SimpleDateFormat
-import java.util.Base64
 import java.util.Date
 import java.util.Locale
 import java.util.zip.DataFormatException
@@ -36,6 +34,9 @@ import java.util.zip.Deflater
 import java.util.zip.Inflater
 import kotlin.math.log10
 import kotlin.math.pow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONException
 
 class FileManager(private val application: Application, private val prefs: Preferences) {
     @Throws(IOException::class)
@@ -122,17 +123,19 @@ class FileManager(private val application: Application, private val prefs: Prefe
                 return@withContext null
             }
 
-            val (name, configContent) = ConfigFormatConverter.convert(application, content).getOrElse { e ->
-                Log.e(TAG, "Failed to parse config", e)
-                return@withContext null
-            }
+            val (name, configContent) =
+                ConfigFormatConverter.convert(application, content).getOrElse { e ->
+                    Log.e(TAG, "Failed to parse config", e)
+                    return@withContext null
+                }
 
-            val formattedContent = try {
-                ConfigUtils.formatConfigContent(configContent)
-            } catch (e: JSONException) {
-                Log.e(TAG, "Invalid JSON format in provided content.", e)
-                return@withContext null
-            }
+            val formattedContent =
+                try {
+                    ConfigUtils.formatConfigContent(configContent)
+                } catch (e: JSONException) {
+                    Log.e(TAG, "Invalid JSON format in provided content.", e)
+                    return@withContext null
+                }
 
             val filename = "$name.json"
             val newFile = File(application.filesDir, filename)
@@ -143,7 +146,7 @@ class FileManager(private val application: Application, private val prefs: Prefe
                 }
                 Log.d(
                     TAG,
-                    "Successfully imported config from content to: ${newFile.absolutePath}"
+                    "Successfully imported config from content to: ${newFile.absolutePath}",
                 )
                 newFile.absolutePath
             } catch (e: IOException) {
@@ -177,9 +180,7 @@ class FileManager(private val application: Application, private val prefs: Prefe
                 preferencesMap[Preferences.DNS_IPV4] = prefs.dnsIpv4
                 preferencesMap[Preferences.DNS_IPV6] = prefs.dnsIpv6
                 preferencesMap[Preferences.IPV6] = prefs.ipv6
-                preferencesMap[Preferences.APPS] = ArrayList(
-                    prefs.apps ?: emptySet()
-                )
+                preferencesMap[Preferences.APPS] = ArrayList(prefs.apps ?: emptySet())
                 preferencesMap[Preferences.BYPASS_LAN] = prefs.bypassLan
                 preferencesMap[Preferences.USE_TEMPLATE] = prefs.useTemplate
                 preferencesMap[Preferences.HTTP_PROXY_ENABLED] = prefs.httpProxyEnabled
@@ -278,10 +279,12 @@ class FileManager(private val application: Application, private val prefs: Prefe
                 val backupData = gson.fromJson<Map<String, Any>>(jsonString, backupDataType)
 
                 require(
-                    !(backupData == null || !backupData.containsKey("preferences") || !backupData.containsKey(
-                        "configFiles"
-                    ))
-                ) { "Invalid backup file format." }
+                    !(backupData == null ||
+                        !backupData.containsKey("preferences") ||
+                        !backupData.containsKey("configFiles"))
+                ) {
+                    "Invalid backup file format."
+                }
 
                 var preferencesMap: Map<String?, Any?>? = null
                 val preferencesObj = backupData["preferences"]
@@ -365,7 +368,7 @@ class FileManager(private val application: Application, private val prefs: Prefe
                             } else if (item != null) {
                                 Log.w(
                                     TAG,
-                                    "Skipping non-String item in APPS list: " + item.javaClass.name
+                                    "Skipping non-String item in APPS list: " + item.javaClass.name,
                                 )
                             }
                         }
@@ -392,7 +395,7 @@ class FileManager(private val application: Application, private val prefs: Prefe
                         } catch (ignore: NumberFormatException) {
                             Log.w(
                                 TAG,
-                                "Failed to parse CONNECTIVITY_TEST_TIMEOUT as integer: $value"
+                                "Failed to parse CONNECTIVITY_TEST_TIMEOUT as integer: $value",
                             )
                         }
                     }
@@ -420,17 +423,18 @@ class FileManager(private val application: Application, private val prefs: Prefe
                             } else if (item != null) {
                                 Log.w(
                                     TAG,
-                                    "Skipping non-String item in CONFIG_FILES_ORDER list: " + item.javaClass.name
+                                    "Skipping non-String item in CONFIG_FILES_ORDER list: " +
+                                        item.javaClass.name,
                                 )
                             }
                         }
                     } else if (configOrderObj != null) {
                         Log.w(
                             TAG,
-                            "CONFIG_FILES_ORDER preference is not a List: " + configOrderObj.javaClass.name
+                            "CONFIG_FILES_ORDER preference is not a List: " +
+                                configOrderObj.javaClass.name,
                         )
                     }
-
                 } else {
                     Log.w(TAG, "Preferences map is null or not a Map.")
                 }
@@ -439,10 +443,12 @@ class FileManager(private val application: Application, private val prefs: Prefe
 
                 if (configFilesMap != null) {
                     for ((filename, content) in configFilesMap) {
-                        if (filename == null || FilenameValidator.validateFilename(
-                                application,
-                                filename
-                            ) != null
+                        if (
+                            filename == null ||
+                                FilenameValidator.validateFilename(
+                                    application,
+                                    filename,
+                                ) != null
                         ) {
                             Log.e(TAG, "Skipping restore of invalid filename: $filename")
                             continue
@@ -463,8 +469,10 @@ class FileManager(private val application: Application, private val prefs: Prefe
 
                 val existingFileNames = prefs.configFilesOrder.toMutableList()
                 val actualFileNamesAfterRestore =
-                    filesDir.listFiles { file -> file.isFile && file.name.endsWith(".json") }
-                        ?.map { it.name }?.toMutableSet() ?: mutableSetOf()
+                    filesDir
+                        .listFiles { file -> file.isFile && file.name.endsWith(".json") }
+                        ?.map { it.name }
+                        ?.toMutableSet() ?: mutableSetOf()
 
                 val finalConfigOrder = mutableListOf<String>()
                 val processedFileNames = mutableSetOf<String>()
@@ -477,9 +485,9 @@ class FileManager(private val application: Application, private val prefs: Prefe
                 }
 
                 existingFileNames.forEach { filename ->
-                    if (actualFileNamesAfterRestore.contains(filename) && !processedFileNames.contains(
-                            filename
-                        )
+                    if (
+                        actualFileNamesAfterRestore.contains(filename) &&
+                            !processedFileNames.contains(filename)
                     ) {
                         finalConfigOrder.add(filename)
                         processedFileNames.add(filename)
@@ -546,7 +554,7 @@ class FileManager(private val application: Application, private val prefs: Prefe
                             }
                             Log.d(
                                 TAG,
-                                "Extracted asset: " + file + " to " + targetFile.absolutePath
+                                "Extracted asset: " + file + " to " + targetFile.absolutePath,
                             )
                         }
                     }
@@ -604,7 +612,7 @@ class FileManager(private val application: Application, private val prefs: Prefe
     suspend fun saveRuleFile(
         inputStream: InputStream,
         filename: String,
-        onProgress: (Int) -> Unit
+        onProgress: (Int) -> Unit,
     ): Boolean {
         return withContext(Dispatchers.IO) {
             val targetFile = File(application.filesDir, filename)
@@ -667,7 +675,7 @@ class FileManager(private val application: Application, private val prefs: Prefe
             Locale.getDefault(),
             "%.1f %s",
             size / 1024.0.pow(digitGroups.toDouble()),
-            units[digitGroups]
+            units[digitGroups],
         )
     }
 
@@ -714,7 +722,7 @@ class FileManager(private val application: Application, private val prefs: Prefe
                     prefs.selectedConfigPath = newFile.absolutePath
                     Log.d(
                         TAG,
-                        "Updated selectedConfigPath: ${oldFile.absolutePath} -> ${newFile.absolutePath}"
+                        "Updated selectedConfigPath: ${oldFile.absolutePath} -> ${newFile.absolutePath}",
                     )
                 }
 
@@ -723,7 +731,7 @@ class FileManager(private val application: Application, private val prefs: Prefe
                 Log.e(
                     TAG,
                     "Error renaming config file from ${oldFile.absolutePath} to ${newFile.absolutePath}",
-                    e
+                    e,
                 )
                 if (newFile.exists()) {
                     newFile.delete()
