@@ -64,9 +64,9 @@ scripts/check-license-headers.sh   # MPL-2.0 SPDX header on every source file
 ./gradlew lintDebug                # Android lint against app/lint-baseline.xml
 ```
 
-Lint fails on any finding that is not in `app/lint-baseline.xml`. Fix new
-findings rather than re-baselining. If one is truly a false positive, suppress
-it where it occurs, with a comment saying why.
+Lint treats every warning as an error, and there is no baseline. Fix
+findings. If one is truly a false positive, suppress it where it occurs, with
+a comment saying why.
 
 `scripts/secret-scan.sh` is a pre-commit hook that rejects staged keys and
 tokens. Install it with:

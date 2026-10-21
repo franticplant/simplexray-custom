@@ -38,7 +38,7 @@ jobs:
       - name: Unit tests
         run: ./gradlew testDebugUnitTest
 
-      # Fails on any finding not already recorded in app/lint-baseline.xml.
+      # Every warning is an error (see the lint block in app/build.gradle).
       - name: Lint
         run: ./gradlew lintDebug
 

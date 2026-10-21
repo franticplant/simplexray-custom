@@ -2,28 +2,24 @@
 
 ## One-time setup
 
-1. Create a release keystore, and keep it and its passwords somewhere safe.
-   Losing it means users can no longer update in place.
-
-   ```sh
-   keytool -genkeypair -v -keystore simplexray-release.jks -alias simplexray \
-     -keyalg RSA -keysize 4096 -validity 10000
-   ```
-
+1. Have the release keystore and its password at hand, and keep both backed up
+   outside the repository. Losing the key means users can no longer update in
+   place.
 2. In **Settings → Environments**, create an environment named `release`.
    Restrict its deployment branches and tags to `main` and `v*`.
 3. Add these environment secrets:
-   - `SIMPLEXRAY_KEYSTORE_BASE64`: the output of `base64 -w0 simplexray-release.jks`
+   - `SIMPLEXRAY_KEYSTORE_BASE64`: the keystore, base64-encoded (`base64 -w0 <keystore>`)
    - `SIMPLEXRAY_KEYSTORE_PASSWORD`
    - `SIMPLEXRAY_KEY_PASSWORD` (optional; defaults to the store password)
 4. Add these repository variables:
-   - `SIMPLEXRAY_KEY_ALIAS`, if the alias is not `simplexray`
+   - `SIMPLEXRAY_KEY_ALIAS`: the key's alias, if it is not `simplexray`
    - `SIMPLEXRAY_CERT_SHA256`: the certificate's SHA-256 (from
      `keytool -list -v`, without colons). Builds signed with any other key
      then fail.
-5. In **Settings → Actions → General**, give workflows read and write
-   permissions. The Xray-core update workflow commits and tags with the
-   workflow token, so `main` must accept pushes from GitHub Actions.
+5. Leave the default workflow permissions read-only. Each workflow asks for
+   exactly what it needs. The Xray-core update workflow commits through the
+   GraphQL API, which signs the commit, so it passes the signed-commits rule on
+   `main`.
 
 Until the keystore secret exists, CI skips the signed build on `main`, and the
 release workflow fails with a message pointing here.

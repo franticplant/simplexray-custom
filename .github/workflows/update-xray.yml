@@ -5,9 +5,10 @@ name: Update Xray-core
 # asks for; the geo data; the app version), commits that to main with release
 # notes, tags it and starts the Release workflow for the tag.
 #
-# Uses the workflow's own token, so main must allow pushes from GitHub Actions.
-# A tag pushed with that token does not trigger workflows itself, hence the
-# explicit dispatch of release.yml.
+# main only accepts signed commits, so the commit is made through the GraphQL
+# API (createCommitOnBranch), which GitHub signs on the bot's behalf, rather
+# than by git push. A tag created with the workflow's own token does not
+# trigger workflows, hence the explicit dispatch of release.yml.
 
 on:
   schedule:
@@ -32,12 +33,12 @@ jobs:
     timeout-minutes: 15
     if: github.ref == 'refs/heads/main'
     permissions:
-      contents: write # commit and tag
+      contents: write # commit and tag through the API
       actions: write # dispatch release.yml
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
       - name: Check for updates
         id: check
@@ -78,7 +79,7 @@ jobs:
             echo "name=$name"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Commit, tag and push
+      - name: Update files
         if: steps.check.outputs.update == 'true'
         env:
           XRAY: ${{ steps.check.outputs.xray }}
@@ -96,18 +97,38 @@ jobs:
             -e "s/^APP_VERSION_NAME=.*/APP_VERSION_NAME=$NAME/" \
             version.properties
           mkdir -p docs/release-notes
-          cat > "docs/release-notes/v$NAME.md" <<NOTES
-          ### Changes
-          - **Xray-core** updated to [$XRAY](https://github.com/XTLS/Xray-core/releases/tag/$XRAY), built with Go $GO.
-          - **Geo data** updated to [$GEO](https://github.com/lhear/v2ray-rules-dat/releases/tag/$GEO).
-          NOTES
-          sed -i 's/^          //' "docs/release-notes/v$NAME.md"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add version.properties "docs/release-notes/v$NAME.md"
-          git commit -m "Update Xray-core to $XRAY, release v$NAME"
-          git tag -a "v$NAME" -m "v$NAME"
-          git push --atomic origin HEAD:main "v$NAME"
+          {
+            echo "### Changes"
+            echo "- **Xray-core** updated to [$XRAY](https://github.com/XTLS/Xray-core/releases/tag/$XRAY), built with Go $GO."
+            echo "- **Geo data** updated to [$GEO](https://github.com/lhear/v2ray-rules-dat/releases/tag/$GEO)."
+          } > "docs/release-notes/v$NAME.md"
+
+      - name: Commit and tag
+        if: steps.check.outputs.update == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          XRAY: ${{ steps.check.outputs.xray }}
+          NAME: ${{ steps.check.outputs.name }}
+        run: |
+          notes="docs/release-notes/v$NAME.md"
+          sha=$(gh api graphql \
+            -f query='mutation($input: CreateCommitOnBranchInput!) {
+              createCommitOnBranch(input: $input) { commit { oid } } }' \
+            --input - --jq .data.createCommitOnBranch.commit.oid <<JSON
+          {"variables": {"input": {
+            "branch": {"repositoryNameWithOwner": "$GITHUB_REPOSITORY", "branchName": "main"},
+            "expectedHeadOid": "$(git rev-parse HEAD)",
+            "message": {"headline": "Update Xray-core to $XRAY, release v$NAME"},
+            "fileChanges": {"additions": [
+              {"path": "version.properties", "contents": "$(base64 -w0 version.properties)"},
+              {"path": "$notes", "contents": "$(base64 -w0 "$notes")"}
+            ]}
+          }}}
+          JSON
+          )
+          [[ $sha =~ ^[0-9a-f]{40}$ ]] || { echo "::error::commit failed: $sha"; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/v$NAME" -f sha="$sha" > /dev/null
+          echo "Committed $sha and tagged v$NAME"
           echo "tag=v$NAME" >> "$GITHUB_ENV"
 
       - name: Start release

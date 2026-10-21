@@ -12,9 +12,9 @@ in over JNI. It can run several Xray instances at once.
 
 This is an independently maintained fork of
 [lhear/SimpleXray](https://github.com/lhear/SimpleXray), which is no longer
-developed. It keeps the original application ID (`com.simplexray.an`) and
-signing scheme, so it is not interchangeable with F-Droid builds of the
-original.
+developed. It installs as `io.github.franticplant.simplexray`, so it sits
+alongside the original app rather than replacing it. Configs move across
+with the app's export and import.
 
 ## What it does
 
