@@ -1,63 +1,82 @@
-# SimpleXray
+# SimpleXray (custom)
 
-<img src="https://raw.githubusercontent.com/lhear/SimpleXray/main/metadata/en-US/images/icon.png" alt="icon" width="150">
+<img src="metadata/en-US/images/icon.png" alt="SimpleXray icon" width="120">
 
-[![GitHub Release](https://img.shields.io/github/v/release/lhear/SimpleXray)](https://github.com/lhear/SimpleXray/releases)
-[![FDroid Release](https://img.shields.io/f-droid/v/com.simplexray.an.svg)](https://f-droid.org/packages/com.simplexray.an)
-[![GitHub License](https://img.shields.io/github/license/lhear/SimpleXray)](LICENSE)
-[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/lhear/SimpleXray/.github%2Fworkflows%2Fbuild.yml)](https://github.com/lhear/SimpleXray/actions)
-![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/lhear/SimpleXray/total)
+[![Android CI](https://github.com/franticplant/simplexray-custom/actions/workflows/android.yml/badge.svg)](https://github.com/franticplant/simplexray-custom/actions/workflows/android.yml)
+[![Release](https://img.shields.io/github/v/release/franticplant/simplexray-custom)](https://github.com/franticplant/simplexray-custom/releases)
+[![License: MPL-2.0](https://img.shields.io/github/license/franticplant/simplexray-custom)](LICENSE)
 
-SimpleXray is a high-performance proxy client for Android, **built upon the robust Xray-core ([@XTLS/Xray-core](https://github.com/XTLS/Xray-core))**.
+An Android proxy client for [Xray-core](https://github.com/XTLS/Xray-core) that
+runs the Xray-core executable itself, as child processes, rather than linking it
+in over JNI. It can run several Xray instances at once.
 
-It features an **innovative approach**: **directly executing the official Xray-core binary**, unlike traditional JNI methods. This method isolates core logic from the app layer, boosting stability and maximizing Xray-core's native performance.
+This is an independently maintained fork of
+[lhear/SimpleXray](https://github.com/lhear/SimpleXray), which is no longer
+developed. It keeps the original application ID (`com.simplexray.an`) and
+signing scheme, so it is not interchangeable with F-Droid builds of the
+original.
 
----
+## What it does
 
-## Key Features
+- **Xray-core as a separate process.** Each profile runs the Xray-core binary
+  in its own process. A core crash cannot take the app down, nothing leaks
+  across JNI, and the core runs at native speed.
+- **Several instances at once.** One profile carries the VPN tunnel. Others run
+  core-only, as local SOCKS/HTTP proxies for particular apps or chains. Each
+  instance gets its own loopback API port and statistics, its own log tag, and
+  its own start, stop and restart controls. See the
+  [multi-instance guide](docs/MULTI_INSTANCE_GUIDE.md).
+- **Tun2socks in C.** [hev-socks5-tunnel](https://github.com/heiher/hev-socks5-tunnel)
+  carries the VPN interface's traffic into Xray's SOCKS inbound with low
+  latency.
+- **Material 3 UI** with per-profile status, live traffic graphs, app-based
+  routing, and config import from share links and SimpleXray's own format.
 
-*   **Multi-Instance Support**: Run and configure multiple concurrent Xray core instances simultaneously. Easily toggle profiles, view per-instance traffic, and inspect individual API ports.
-*   **Enhanced Stability**: Executes Xray-core as independent child processes, avoiding JNI complexities, memory leaks, and core crashes.
-*   **High Performance**: Leverages Xray-core's native speed and integrates [@heiher/hev-socks5-tunnel](https://github.com/heiher/hev-socks5-tunnel) for low-latency Tun2socks performance.
-*   **Flexible UX**: Material 3 interface with per-profile status pills, instance controls, and live traffic graphs.
+## Install
 
----
+Download the APK for your device from the
+[releases page](https://github.com/franticplant/simplexray-custom/releases):
+`arm64-v8a` for almost every phone, `x86_64` for emulators and Chromebooks, or
+`universal`.
 
-## Architecture & Multi-Instance Documentation
+Every release file comes with build-provenance and SBOM attestations:
 
-For complete technical documentation on the Multi-Instance core architecture, port management, and process lifecycle, see:
-👉 **[Multi-Instance Guide](docs/MULTI_INSTANCE_GUIDE.md)**
-
----
-
-## Build & Keystore Configuration
-
-SimpleXray supports dynamic APK signing using customizable environment variables or property files.
-
-### 1. Build Requirements
-- JDK 17+
-- Android SDK (API 35)
-
-### 2. Signing with Custom Keystore
-Set environment variables before invoking Gradle:
-```bash
-export KEYSTORE_PATH="/path/to/keystore.jks"
-export KEYSTORE_PASSWORD="your_store_password"
-export KEY_ALIAS="your_key_alias"
-export KEY_PASSWORD="your_key_password"
-
-./gradlew assembleRelease
-```
-Alternatively, configure `store.properties` in the project root directory:
-```properties
-storeFile=/path/to/keystore.jks
-storePassword=your_store_password
-keyAlias=your_key_alias
-keyPassword=your_key_password
+```sh
+gh attestation verify simplexray-v1.11.0-arm64-v8a.apk -R franticplant/simplexray-custom
 ```
 
----
+The build is reproducible. `scripts/verify-reproducible.sh <tag>` rebuilds a
+release from source and checks that it matches the published APKs byte for
+byte, apart from the signature.
+
+## Build
+
+You need JDK 21, the Android SDK, the NDK version named in
+`version.properties`, and Go (also pinned in `version.properties`).
+
+```sh
+git clone --recurse-submodules https://github.com/franticplant/simplexray-custom
+cd simplexray-custom
+scripts/fetch-geodata.sh     # geoip.dat / geosite.dat, checksum-verified
+scripts/build-xray.sh        # Xray-core from source, per ABI
+./gradlew assembleDebug
+```
+
+[docs/building.md](docs/building.md) covers signing, checks, and how versions
+are managed. [docs/releasing.md](docs/releasing.md) covers how releases are
+made.
+
+## Documentation
+
+See [docs/README.md](docs/README.md).
 
 ## License
 
-This project is licensed under the **[Mozilla Public License Version 2.0](LICENSE)**.
+[Mozilla Public License 2.0](LICENSE). Bundled third-party components and their
+licenses are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Origin
+
+SimpleXray was written by [lhear](https://github.com/lhear) and contributors.
+This fork adds multi-instance cores, a rebuilt build and release pipeline, and
+ongoing dependency maintenance.
