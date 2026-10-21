@@ -9,6 +9,7 @@ import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.core.content.FileProvider
+import com.simplexray.an.BuildConfig
 import com.simplexray.an.R
 import com.simplexray.an.service.TProxyService
 import com.simplexray.an.viewmodel.LogViewModel
@@ -60,7 +61,7 @@ fun rememberMainScreenCallbacks(
                     val fileUri =
                         FileProvider.getUriForFile(
                             applicationContext,
-                            "com.simplexray.an.fileprovider",
+                            "${BuildConfig.APPLICATION_ID}.fileprovider",
                             logFile,
                         )
                     val shareIntent = Intent(Intent.ACTION_SEND)

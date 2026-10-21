@@ -4,7 +4,6 @@
 package com.simplexray.an.common
 
 import android.util.Log
-import com.simplexray.an.prefs.Preferences
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -30,12 +29,12 @@ object ConfigUtils {
     }
 
     @Throws(JSONException::class)
-    fun injectStatsService(prefs: Preferences, configContent: String): String {
+    fun injectStatsService(apiAddress: String, apiPort: Int, configContent: String): String {
         val jsonObject = JSONObject(configContent)
 
         val apiObject = JSONObject()
         apiObject.put("tag", "api")
-        apiObject.put("listen", "${prefs.apiAddress}:${prefs.apiPort}")
+        apiObject.put("listen", "$apiAddress:$apiPort")
         val servicesArray = org.json.JSONArray()
         servicesArray.put("StatsService")
         apiObject.put("services", servicesArray)

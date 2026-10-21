@@ -56,6 +56,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simplexray.an.R
 import com.simplexray.an.common.ThemeMode
@@ -72,6 +73,9 @@ fun SettingsScreen(
     scrollState: androidx.compose.foundation.ScrollState,
 ) {
     val context = LocalContext.current
+    val geoipDefaultUrl = stringResource(R.string.geoip_url)
+    val geositeDefaultUrl = stringResource(R.string.geosite_url)
+    val sourceUrl = stringResource(R.string.source_url)
     val settingsState by mainViewModel.settingsState.collectAsStateWithLifecycle()
     val geoipProgress by mainViewModel.geoipDownloadProgress.collectAsStateWithLifecycle()
     val geositeProgress by mainViewModel.geositeDownloadProgress.collectAsStateWithLifecycle()
@@ -138,9 +142,8 @@ fun SettingsScreen(
                 TextButton(
                     onClick = {
                         ruleFileUrl =
-                            if (editingRuleFile == "geoip.dat")
-                                context.getString(R.string.geoip_url)
-                            else context.getString(R.string.geosite_url)
+                            if (editingRuleFile == "geoip.dat") geoipDefaultUrl
+                            else geositeDefaultUrl
                     }
                 ) {
                     Text(stringResource(id = R.string.restore_default_url))
@@ -675,7 +678,7 @@ fun SettingsScreen(
                     val browserIntent =
                         Intent(
                             Intent.ACTION_VIEW,
-                            Uri.parse(context.getString(R.string.source_url)),
+                            sourceUrl.toUri(),
                         )
                     context.startActivity(browserIntent)
                 },

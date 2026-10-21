@@ -9,10 +9,10 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.VpnService
-import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.util.Log
+import androidx.core.content.ContextCompat
 
 class QuickTileService : TileService() {
 
@@ -41,15 +41,12 @@ class QuickTileService : TileService() {
                 addAction(TProxyService.ACTION_STOP)
             }
             .also { filter ->
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    registerReceiver(broadcastReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-                } else {
-                    @Suppress("UnspecifiedRegisterReceiverFlag")
-                    registerReceiver(
-                        broadcastReceiver,
-                        filter,
-                    )
-                }
+                ContextCompat.registerReceiver(
+                    this,
+                    broadcastReceiver,
+                    filter,
+                    ContextCompat.RECEIVER_NOT_EXPORTED,
+                )
             }
 
         updateTileState(isVpnServiceRunning(this, TProxyService::class.java))

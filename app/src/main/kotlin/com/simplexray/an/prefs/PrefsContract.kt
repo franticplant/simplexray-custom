@@ -5,10 +5,12 @@ package com.simplexray.an.prefs
 
 import android.net.Uri
 import android.provider.BaseColumns
+import androidx.core.net.toUri
+import com.simplexray.an.BuildConfig
 
 object PrefsContract {
-    const val AUTHORITY: String = "com.simplexray.an.prefsprovider"
-    val BASE_CONTENT_URI: Uri = Uri.parse("content://$AUTHORITY")
+    const val AUTHORITY: String = "${BuildConfig.APPLICATION_ID}.prefsprovider"
+    val BASE_CONTENT_URI: Uri = "content://$AUTHORITY".toUri()
     const val PATH_PREFS: String = "prefs"
 
     object PrefsEntry : BaseColumns {

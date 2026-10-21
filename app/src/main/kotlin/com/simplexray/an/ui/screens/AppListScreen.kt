@@ -69,6 +69,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.createBitmap
 import com.simplexray.an.R
 import com.simplexray.an.ui.theme.ScrollbarDefaults
 import com.simplexray.an.viewmodel.AppListViewModel
@@ -379,7 +380,7 @@ fun drawableToBitmap(drawable: Drawable): Bitmap? {
     }
     val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 64
     val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 64
-    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val bitmap = createBitmap(width, height)
     val canvas = Canvas(bitmap)
     drawable.setBounds(0, 0, canvas.width, canvas.height)
     drawable.draw(canvas)

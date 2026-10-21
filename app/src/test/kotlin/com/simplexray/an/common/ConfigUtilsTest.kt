@@ -47,6 +47,19 @@ class ConfigUtilsTest {
     }
 
     @Test
+    fun injectStatsService_addsApiStatsAndPolicy() {
+        val config = JSONObject(ConfigUtils.injectStatsService("127.1.2.3", 14222, "{}"))
+
+        val api = config.getJSONObject("api")
+        assertEquals("127.1.2.3:14222", api.getString("listen"))
+        assertEquals("StatsService", api.getJSONArray("services").getString(0))
+        assertTrue(config.has("stats"))
+        val system = config.getJSONObject("policy").getJSONObject("system")
+        assertTrue(system.getBoolean("statsOutboundUplink"))
+        assertTrue(system.getBoolean("statsOutboundDownlink"))
+    }
+
+    @Test
     fun extractPortsFromJson_findsPortsInNestedObjectsAndArrays() {
         val config =
             """

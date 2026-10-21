@@ -23,6 +23,7 @@ import androidx.core.app.NotificationCompat
 import com.simplexray.an.BuildConfig
 import com.simplexray.an.R
 import com.simplexray.an.activity.MainActivity
+import com.simplexray.an.core.InstanceRegistry
 import com.simplexray.an.core.XrayInstanceManager
 import com.simplexray.an.data.source.LogFileManager
 import com.simplexray.an.prefs.Preferences
@@ -62,6 +63,8 @@ class TProxyService : VpnService() {
     override fun onCreate() {
         super.onCreate()
         logFileManager = LogFileManager(this)
+        // Anything registered belongs to a previous process of this service, now gone.
+        InstanceRegistry.clear(this)
         Log.d(TAG, "TProxyService created.")
     }
 
@@ -256,9 +259,7 @@ class TProxyService : VpnService() {
             setBlocking(false)
             setMtu(prefs.tunnelMtu)
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                setMetered(false)
-            }
+            setMetered(false)
 
             if (prefs.bypassLan) {
                 addRoute("10.0.0.0", 8)

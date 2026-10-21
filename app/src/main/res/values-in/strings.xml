@@ -108,7 +108,6 @@
     <string name="stats_uplink">Lalu Lintas Unggah</string>
     <string name="stats_downlink">Lalu Lintas Unduh</string>
     <string name="stats_num_goroutine">Jumlah Goroutine</string>
-    <string name="stats_num_gc">Jumlah Pengumpulan Sampah</string>
     <string name="stats_alloc">Memori Dialokasikan</string>
     <string name="stats_uptime">Waktu Aktif</string>
     <string name="check_for_updates">Periksa Pembaruan</string>

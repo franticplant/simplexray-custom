@@ -11,6 +11,7 @@ import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
 import android.util.Log
+import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 
 class PrefsProvider : ContentProvider() {
@@ -124,45 +125,45 @@ class PrefsProvider : ContentProvider() {
                     values != null &&
                     values.containsKey(PrefsContract.PrefsEntry.COLUMN_PREF_VALUE)
             ) {
-                val editor = prefs.edit()
-                when (val value = values[PrefsContract.PrefsEntry.COLUMN_PREF_VALUE]) {
-                    is String -> {
-                        editor.putString(key, value)
-                    }
+                prefs.edit {
+                    when (val value = values[PrefsContract.PrefsEntry.COLUMN_PREF_VALUE]) {
+                        is String -> {
+                            putString(key, value)
+                        }
 
-                    is Int -> {
-                        editor.putInt(key, value)
-                    }
+                        is Int -> {
+                            putInt(key, value)
+                        }
 
-                    is Boolean -> {
-                        editor.putBoolean(key, value)
-                    }
+                        is Boolean -> {
+                            putBoolean(key, value)
+                        }
 
-                    is Long -> {
-                        editor.putLong(key, value)
-                    }
+                        is Long -> {
+                            putLong(key, value)
+                        }
 
-                    is Float -> {
-                        editor.putFloat(key, value)
-                    }
+                        is Float -> {
+                            putFloat(key, value)
+                        }
 
-                    is Set<*> -> {
-                        val stringSet = value.filterIsInstance<String>().toSet()
-                        if (stringSet.size == value.size) {
-                            editor.putStringSet(key, stringSet)
-                        } else {
-                            Log.e(
-                                TAG,
-                                "Value for key $key is a Set but contains non-String or null elements (putStringSet requires Set<String>).",
-                            )
+                        is Set<*> -> {
+                            val stringSet = value.filterIsInstance<String>().toSet()
+                            if (stringSet.size == value.size) {
+                                putStringSet(key, stringSet)
+                            } else {
+                                Log.e(
+                                    TAG,
+                                    "Value for key $key is a Set but contains non-String or null elements (putStringSet requires Set<String>).",
+                                )
+                            }
+                        }
+
+                        else -> {
+                            Log.e(TAG, "Unsupported value type for key: $key")
                         }
                     }
-
-                    else -> {
-                        Log.e(TAG, "Unsupported value type for key: $key")
-                    }
                 }
-                editor.apply()
                 rowsAffected = 1
                 val context = context
                 context?.contentResolver?.notifyChange(uri, null)

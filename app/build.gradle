@@ -34,7 +34,7 @@ android {
     ndkVersion = versionProps.NDK_VERSION
 
     defaultConfig {
-        applicationId = 'com.simplexray.an'
+        applicationId = 'io.github.franticplant.simplexray'
         minSdk = 29
         targetSdk = 36
         versionCode = versionProps.APP_VERSION_CODE.toInteger()
@@ -93,11 +93,11 @@ android {
         }
     }
 
-    // Pre-existing findings are recorded in lint-baseline.xml; anything new
-    // fails the build. Regenerate with ./gradlew updateLintBaseline.
+    // Every lint warning fails the build. A true false positive is suppressed
+    // where it occurs, with a comment saying why.
     lint {
-        baseline = file('lint-baseline.xml')
         abortOnError = true
+        warningsAsErrors = true
         checkReleaseBuilds = true
         // Dependabot owns version bumps.
         disable 'GradleDependency', 'NewerVersionAvailable', 'AndroidGradlePluginVersion'

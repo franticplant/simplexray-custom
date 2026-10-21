@@ -12,9 +12,10 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.net.VpnService
-import android.os.Build
 import android.util.Log
 import androidx.activity.result.ActivityResultLauncher
+import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -26,8 +27,9 @@ import com.simplexray.an.common.CoreStatsClient
 import com.simplexray.an.common.ROUTE_APP_LIST
 import com.simplexray.an.common.ROUTE_CONFIG_EDIT
 import com.simplexray.an.common.ThemeMode
+import com.simplexray.an.core.InstanceRegistry
+import com.simplexray.an.core.InstanceStatus
 import com.simplexray.an.core.XrayInstanceInfo
-import com.simplexray.an.core.XrayInstanceManager
 import com.simplexray.an.data.source.FileManager
 import com.simplexray.an.prefs.Preferences
 import com.simplexray.an.service.TProxyService
@@ -80,7 +82,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val activityScope: CoroutineScope = viewModelScope
     private var compressedBackupData: ByteArray? = null
 
-    private var coreStatsClient: CoreStatsClient? = null
+    // One stats client per running instance, keyed by "address:port"; guarded by statsLock.
+    private val statsClients = mutableMapOf<String, CoreStatsClient>()
+    private val statsLock = Any()
 
     private val fileManager: FileManager = FileManager(application, prefs)
 
@@ -178,8 +182,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 setServiceEnabled(false)
                 setControlMenuClickable(true)
                 _coreStatsState.value = CoreStatsState()
-                coreStatsClient?.close()
-                coreStatsClient = null
+                _activeInstances.value = emptyList()
+                closeStatsClients()
             }
         }
 
@@ -363,52 +367,86 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return filePath
     }
 
-    suspend fun updateCoreStats() {
-        if (!_isServiceEnabled.value) return
-
-        // Update stats for all managed Xray instances
-        XrayInstanceManager.updateAllStats()
-        _activeInstances.value = XrayInstanceManager.getAllInstanceInfos()
-
-        if (coreStatsClient == null)
-            coreStatsClient = CoreStatsClient.create(prefs.apiAddress, prefs.apiPort)
-
-        val stats = coreStatsClient?.getSystemStats()
-        val traffic = coreStatsClient?.getTraffic()
-
-        if (stats == null && traffic == null) {
-            coreStatsClient?.close()
-            coreStatsClient = null
-            return
+    private fun statsClientFor(info: XrayInstanceInfo): CoreStatsClient =
+        synchronized(statsLock) {
+            statsClients.getOrPut("${info.apiAddress}:${info.apiPort}") {
+                CoreStatsClient.create(info.apiAddress, info.apiPort)
+            }
         }
 
-        _coreStatsState.value =
-            CoreStatsState(
+    private fun closeStatsClients(keep: Set<String> = emptySet()) {
+        val stale =
+            synchronized(statsLock) {
+                val keys = statsClients.keys - keep
+                keys.mapNotNull { statsClients.remove(it) }
+            }
+        stale.forEach { it.close() }
+    }
+
+    /**
+     * Reads the instances the service process is running from InstanceRegistry and fetches each
+     * running one's traffic and runtime stats over its gRPC API.
+     */
+    private suspend fun refreshInstances(): List<XrayInstanceInfo> {
+        val registered =
+            if (_isServiceEnabled.value) InstanceRegistry.read(application) else emptyList()
+        val running = registered.filter { it.status == InstanceStatus.RUNNING }
+        closeStatsClients(keep = running.map { "${it.apiAddress}:${it.apiPort}" }.toSet())
+
+        val infos = registered.map { info ->
+            if (info.status != InstanceStatus.RUNNING) return@map info
+            val client = statsClientFor(info)
+            val stats = client.getSystemStats()
+            val traffic = client.getTraffic()
+            info.copy(
                 uplink = traffic?.uplink ?: 0,
                 downlink = traffic?.downlink ?: 0,
                 numGoroutine = stats?.numGoroutine ?: 0,
-                numGC = stats?.numGC ?: 0,
                 alloc = stats?.alloc ?: 0,
-                totalAlloc = stats?.totalAlloc ?: 0,
-                sys = stats?.sys ?: 0,
-                mallocs = stats?.mallocs ?: 0,
-                frees = stats?.frees ?: 0,
-                liveObjects = stats?.liveObjects ?: 0,
-                pauseTotalNs = stats?.pauseTotalNs ?: 0,
                 uptime = stats?.uptime ?: 0,
+            )
+        }
+        _activeInstances.value = infos
+        return infos
+    }
+
+    suspend fun updateCoreStats() {
+        if (!_isServiceEnabled.value) return
+
+        val running = refreshInstances().filter { it.status == InstanceStatus.RUNNING }
+        // The global card follows the instance carrying the VPN; traffic is summed over all.
+        val primary = running.firstOrNull { it.isPrimaryVpn } ?: running.firstOrNull() ?: return
+        val client = statsClientFor(primary)
+        val stats = client.getSystemStats() ?: return
+
+        _coreStatsState.value =
+            CoreStatsState(
+                uplink = running.sumOf { it.uplink },
+                downlink = running.sumOf { it.downlink },
+                numGoroutine = stats.numGoroutine,
+                numGC = stats.numGC,
+                alloc = stats.alloc,
+                totalAlloc = stats.totalAlloc,
+                sys = stats.sys,
+                mallocs = stats.mallocs,
+                frees = stats.frees,
+                liveObjects = stats.liveObjects,
+                pauseTotalNs = stats.pauseTotalNs,
+                uptime = stats.uptime,
             )
         Log.d(TAG, "Core stats updated")
     }
 
     fun refreshActiveInstances() {
-        viewModelScope.launch(Dispatchers.IO) {
-            _activeInstances.value = XrayInstanceManager.getAllInstanceInfos()
-        }
+        viewModelScope.launch(Dispatchers.IO) { refreshInstances() }
     }
 
     fun toggleInstance(configPath: String) {
         viewModelScope.launch {
-            val isRunning = XrayInstanceManager.isInstanceRunning(configPath)
+            val isRunning =
+                _activeInstances.value.any {
+                    it.configPath == configPath && it.status == InstanceStatus.RUNNING
+                }
             if (isRunning) {
                 stopInstanceConfig(configPath)
             } else {
@@ -1006,28 +1044,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun registerTProxyServiceReceivers() {
         val application = application
         val startSuccessFilter = IntentFilter(TProxyService.ACTION_START)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            application.registerReceiver(
-                startReceiver,
-                startSuccessFilter,
-                Context.RECEIVER_NOT_EXPORTED,
-            )
-        } else {
-            @Suppress("UnspecifiedRegisterReceiverFlag")
-            application.registerReceiver(startReceiver, startSuccessFilter)
-        }
+        ContextCompat.registerReceiver(
+            application,
+            startReceiver,
+            startSuccessFilter,
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
 
         val stopSuccessFilter = IntentFilter(TProxyService.ACTION_STOP)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            application.registerReceiver(
-                stopReceiver,
-                stopSuccessFilter,
-                Context.RECEIVER_NOT_EXPORTED,
-            )
-        } else {
-            @Suppress("UnspecifiedRegisterReceiverFlag")
-            application.registerReceiver(stopReceiver, stopSuccessFilter)
-        }
+        ContextCompat.registerReceiver(
+            application,
+            stopReceiver,
+            stopSuccessFilter,
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         Log.d(TAG, "TProxyService receivers registered.")
     }
 
@@ -1325,7 +1355,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun downloadNewVersion(versionTag: String) {
         val url = application.getString(R.string.source_url) + "/releases/tag/v$versionTag"
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        val intent = Intent(Intent.ACTION_VIEW, url.toUri())
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         application.startActivity(intent)
         _newVersionAvailable.value = null
@@ -1349,6 +1379,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         return 0
+    }
+
+    override fun onCleared() {
+        closeStatsClients()
     }
 
     companion object {
