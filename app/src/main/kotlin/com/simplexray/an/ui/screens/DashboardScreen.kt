@@ -42,16 +42,14 @@ import com.simplexray.an.common.formatBytes
 import com.simplexray.an.common.formatNumber
 import com.simplexray.an.common.formatUptime
 import com.simplexray.an.core.InstanceStatus
-import com.simplexray.an.core.XrayInstanceInfo
+import com.simplexray.an.viewmodel.InstanceState
 import com.simplexray.an.viewmodel.MainViewModel
 import kotlinx.coroutines.delay
 
+/** Polls instance state and stats every second while the calling screen is resumed. */
 @Composable
-fun DashboardScreen(mainViewModel: MainViewModel) {
-    val coreStats by mainViewModel.coreStatsState.collectAsState()
-    val activeInstances by mainViewModel.activeInstances.collectAsState()
+fun PollCoreStats(mainViewModel: MainViewModel) {
     val lifecycleOwner = LocalLifecycleOwner.current
-
     LaunchedEffect(Unit) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             while (true) {
@@ -60,8 +58,15 @@ fun DashboardScreen(mainViewModel: MainViewModel) {
             }
         }
     }
+}
 
-    val runningCount = activeInstances.count { it.status == InstanceStatus.RUNNING }
+@Composable
+fun DashboardScreen(mainViewModel: MainViewModel) {
+    val coreStats by mainViewModel.coreStatsState.collectAsState()
+    val activeInstances by mainViewModel.activeInstances.collectAsState()
+    PollCoreStats(mainViewModel)
+
+    val runningCount = activeInstances.count { it.info.status == InstanceStatus.RUNNING }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp),
@@ -104,6 +109,10 @@ fun DashboardScreen(mainViewModel: MainViewModel) {
 
                     Spacer(modifier = Modifier.height(12.dp))
 
+                    StatRow(
+                        label = "Speed",
+                        value = formatRates(coreStats.uplinkRate, coreStats.downlinkRate),
+                    )
                     StatRow(
                         label = stringResource(id = R.string.stats_uplink),
                         value = formatBytes(coreStats.uplink),
@@ -156,11 +165,11 @@ fun DashboardScreen(mainViewModel: MainViewModel) {
                 }
             }
         } else {
-            items(activeInstances) { instance ->
+            items(activeInstances, key = { it.info.configPath }) { instance ->
                 InstanceCard(
                     instance = instance,
                     onStop = {
-                        mainViewModel.stopInstanceConfig(instance.configPath)
+                        mainViewModel.stopInstanceConfig(instance.info.configPath)
                     },
                 )
                 Spacer(modifier = Modifier.height(12.dp))
@@ -170,7 +179,9 @@ fun DashboardScreen(mainViewModel: MainViewModel) {
 }
 
 @Composable
-fun InstanceCard(instance: XrayInstanceInfo, onStop: () -> Unit) {
+fun InstanceCard(instance: InstanceState, onStop: () -> Unit) {
+    val info = instance.info
+    val stats = instance.stats
     Card(
         modifier = Modifier.fillMaxWidth().clip(MaterialTheme.shapes.large),
         colors =
@@ -186,14 +197,14 @@ fun InstanceCard(instance: XrayInstanceInfo, onStop: () -> Unit) {
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = instance.configName,
+                        text = info.configName + if (info.isPrimaryVpn) " (VPN)" else "",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        text = "API ${instance.apiAddress}:${instance.apiPort}",
+                        text = statusLabel(instance),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = statusColor(instance),
                     )
                 }
 
@@ -202,27 +213,75 @@ fun InstanceCard(instance: XrayInstanceInfo, onStop: () -> Unit) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            info.errorMessage
+                ?.takeIf { info.status != InstanceStatus.RUNNING }
+                ?.let { message ->
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
 
-            StatRow(
-                label = "Throughput (Uplink / Downlink)",
-                value = "↑ ${formatBytes(instance.uplink)}  ↓ ${formatBytes(instance.downlink)}",
-            )
-            StatRow(
-                label = "Goroutines",
-                value = formatNumber(instance.numGoroutine.toLong()),
-            )
-            StatRow(
-                label = "Memory Alloc",
-                value = formatBytes(instance.alloc),
-            )
-            StatRow(
-                label = "Instance Uptime",
-                value = formatUptime(instance.uptime),
-            )
+            if (stats != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                StatRow(label = "Speed", value = formatRates(stats.uplinkRate, stats.downlinkRate))
+                StatRow(
+                    label = "Traffic",
+                    value = "↑ ${formatBytes(stats.uplink)}  ↓ ${formatBytes(stats.downlink)}",
+                )
+                StatRow(
+                    label = "Goroutines",
+                    value = formatNumber(stats.numGoroutine.toLong()),
+                )
+                StatRow(
+                    label = "Memory Alloc",
+                    value = formatBytes(stats.alloc),
+                )
+                StatRow(
+                    label = "Instance Uptime",
+                    value = formatUptime(stats.uptime),
+                )
+                Text(
+                    text = "API ${info.apiAddress}:${info.apiPort}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
+
+/** What an instance is doing, in a few words. */
+fun statusLabel(instance: InstanceState): String {
+    val info = instance.info
+    return when (info.status) {
+        InstanceStatus.STARTING -> "Starting…"
+        InstanceStatus.RUNNING ->
+            when {
+                instance.stats == null -> "Running, stats API not answering"
+                info.restarts > 0 -> "Running (restarted ${info.restarts}×)"
+                else -> "Running"
+            }
+        InstanceStatus.RESTARTING -> "Crashed, restarting (${info.restarts})…"
+        InstanceStatus.ERROR -> "Failed"
+    }
+}
+
+@Composable
+fun statusColor(instance: InstanceState): Color =
+    when (instance.info.status) {
+        InstanceStatus.RUNNING ->
+            if (instance.stats != null) Color(0xFF2E7D32)
+            else MaterialTheme.colorScheme.onSurfaceVariant
+        InstanceStatus.STARTING -> MaterialTheme.colorScheme.onSurfaceVariant
+        InstanceStatus.RESTARTING -> MaterialTheme.colorScheme.tertiary
+        InstanceStatus.ERROR -> MaterialTheme.colorScheme.error
+    }
+
+fun formatRates(uplinkRate: Long, downlinkRate: Long): String =
+    "↑ ${formatBytes(uplinkRate)}/s  ↓ ${formatBytes(downlinkRate)}/s"
 
 @Composable
 fun StatRow(label: String, value: String) {

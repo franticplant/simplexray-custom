@@ -23,7 +23,9 @@ class CoreStatsClient(private val channel: ManagedChannel) : Closeable {
         withContext(Dispatchers.IO) {
             runCatching {
                 val request = SysStatsRequest.newBuilder().build()
-                blockingStub.getSysStats(request)
+                blockingStub
+                    .withDeadlineAfter(CALL_TIMEOUT_S, TimeUnit.SECONDS)
+                    .getSysStats(request)
             }
                 .getOrNull()
         }
@@ -33,7 +35,9 @@ class CoreStatsClient(private val channel: ManagedChannel) : Closeable {
             val request =
                 QueryStatsRequest.newBuilder().setPattern("outbound").setReset(false).build()
 
-            runCatching { blockingStub.queryStats(request) }
+            runCatching {
+                blockingStub.withDeadlineAfter(CALL_TIMEOUT_S, TimeUnit.SECONDS).queryStats(request)
+            }
                 .getOrNull()
                 ?.statList
                 ?.groupBy {
@@ -55,6 +59,9 @@ class CoreStatsClient(private val channel: ManagedChannel) : Closeable {
     }
 
     companion object {
+        // A hung core must not stall polling of the others.
+        private const val CALL_TIMEOUT_S = 2L
+
         fun create(host: String, port: Int): CoreStatsClient {
             val channel = ManagedChannelBuilder.forAddress(host, port).usePlaintext().build()
             return CoreStatsClient(channel)

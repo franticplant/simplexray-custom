@@ -24,7 +24,10 @@ import com.simplexray.an.BuildConfig
 import com.simplexray.an.R
 import com.simplexray.an.activity.MainActivity
 import com.simplexray.an.core.InstanceRegistry
-import com.simplexray.an.core.XrayInstanceManager
+import com.simplexray.an.core.InstanceStatus
+import com.simplexray.an.core.InstanceSupervisor
+import com.simplexray.an.core.XrayInstanceInfo
+import com.simplexray.an.core.XrayLauncher
 import com.simplexray.an.data.source.LogFileManager
 import com.simplexray.an.prefs.Preferences
 import java.io.File
@@ -58,13 +61,28 @@ class TProxyService : VpnService() {
     }
 
     private lateinit var logFileManager: LogFileManager
+    private lateinit var supervisor: InstanceSupervisor
     private var tunFd: ParcelFileDescriptor? = null
+
+    // The foreground notification's channel, while it is showing.
+    @Volatile private var notificationChannel: String? = null
+    @Volatile private var instances: List<XrayInstanceInfo> = emptyList()
 
     override fun onCreate() {
         super.onCreate()
         logFileManager = LogFileManager(this)
         // Anything registered belongs to a previous process of this service, now gone.
         InstanceRegistry.clear(this)
+        supervisor =
+            InstanceSupervisor(
+                XrayLauncher(this),
+                onLog = ::handleLog,
+                onChange = { infos ->
+                    instances = infos
+                    InstanceRegistry.publish(this, infos)
+                    notificationChannel?.let { showNotification(it) }
+                },
+            )
         Log.d(TAG, "TProxyService created.")
     }
 
@@ -80,13 +98,9 @@ class TProxyService : VpnService() {
                 val configPath = intent.getStringExtra(EXTRA_CONFIG_PATH)
                 if (!configPath.isNullOrEmpty()) {
                     Log.d(TAG, "Starting instance for config: $configPath")
-                    XrayInstanceManager.startInstance(
-                        applicationContext,
-                        configPath,
-                        isPrimaryVpn = false,
-                    ) { tag, line ->
-                        handleLog(tag, line)
-                    }
+                    // The selected config is the one carrying the VPN, whichever way it is started.
+                    val isPrimary = configPath == Preferences(this).selectedConfigPath
+                    supervisor.start(configPath, isPrimaryVpn = isPrimary)
                 }
                 return START_STICKY
             }
@@ -95,7 +109,7 @@ class TProxyService : VpnService() {
                 val configPath = intent.getStringExtra(EXTRA_CONFIG_PATH)
                 if (!configPath.isNullOrEmpty()) {
                     Log.d(TAG, "Stopping instance for config: $configPath")
-                    XrayInstanceManager.stopInstance(configPath)
+                    supervisor.stop(configPath)
                 }
                 return START_STICKY
             }
@@ -105,13 +119,7 @@ class TProxyService : VpnService() {
                 val selectedConfigPath = prefs.selectedConfigPath
                 if (!selectedConfigPath.isNullOrEmpty()) {
                     Log.d(TAG, "Received RELOAD_CONFIG action for primary instance.")
-                    XrayInstanceManager.startInstance(
-                        applicationContext,
-                        selectedConfigPath,
-                        isPrimaryVpn = true,
-                    ) { tag, line ->
-                        handleLog(tag, line)
-                    }
+                    switchPrimary(prefs, selectedConfigPath)
                 }
                 return START_STICKY
             }
@@ -127,7 +135,7 @@ class TProxyService : VpnService() {
 
                     @Suppress("SameParameterValue") val channelName = "nosocks"
                     initNotificationChannel(channelName)
-                    createNotification(channelName)
+                    showNotification(channelName)
                 } else {
                     startXray()
                 }
@@ -148,10 +156,11 @@ class TProxyService : VpnService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        notificationChannel = null
         handler.removeCallbacks(broadcastLogsRunnable)
         broadcastLogsRunnable.run()
         serviceScope.cancel()
-        XrayInstanceManager.stopAll()
+        supervisor.close()
         Log.d(TAG, "TProxyService destroyed.")
         exitProcess(0)
     }
@@ -182,34 +191,36 @@ class TProxyService : VpnService() {
         val selectedConfigPath = prefs.selectedConfigPath ?: return
 
         Log.d(TAG, "Starting primary VPN instance: $selectedConfigPath")
-        XrayInstanceManager.startInstance(
-            applicationContext,
-            selectedConfigPath,
-            isPrimaryVpn = true,
-        ) { tag, line ->
-            handleLog(tag, line)
-        }
+        supervisor.start(selectedConfigPath, isPrimaryVpn = true)
 
         // Start secondary active instances if configured
-        val activePaths = prefs.activeConfigPaths
-        activePaths.forEach { path ->
+        prefs.activeConfigPaths.forEach { path ->
             if (path != selectedConfigPath && File(path).exists()) {
                 Log.d(TAG, "Starting secondary active instance: $path")
-                XrayInstanceManager.startInstance(
-                    applicationContext,
-                    path,
-                    isPrimaryVpn = false,
-                ) { tag, line ->
-                    handleLog(tag, line)
-                }
+                supervisor.start(path, isPrimaryVpn = false)
             }
         }
+    }
+
+    /**
+     * Makes selectedConfigPath the instance carrying the VPN. The old one is stopped first, since
+     * it holds the inbound ports the new one needs; if it is also switched on as a secondary
+     * instance, it is started again as one afterwards.
+     */
+    private fun switchPrimary(prefs: Preferences, selectedConfigPath: String) {
+        val previous = instances.filter { it.isPrimaryVpn && it.configPath != selectedConfigPath }
+        previous.forEach { supervisor.stop(it.configPath) }
+        supervisor.start(selectedConfigPath, isPrimaryVpn = true)
+        val active = prefs.activeConfigPaths
+        previous
+            .filter { it.configPath in active }
+            .forEach { supervisor.start(it.configPath, isPrimaryVpn = false) }
     }
 
     private fun stopXray() {
         Log.d(TAG, "stopXray called")
         serviceScope.cancel()
-        XrayInstanceManager.stopAll()
+        // onDestroy, which follows, stops the instances.
         stopService()
     }
 
@@ -251,7 +262,7 @@ class TProxyService : VpnService() {
         sendBroadcast(successIntent)
         @Suppress("SameParameterValue") val channelName = "socks5"
         initNotificationChannel(channelName)
-        createNotification(channelName)
+        showNotification(channelName)
     }
 
     private fun getVpnBuilder(prefs: Preferences): Builder =
@@ -295,6 +306,7 @@ class TProxyService : VpnService() {
         }
 
     private fun stopService() {
+        notificationChannel = null
         tunFd?.let {
             try {
                 it.close()
@@ -307,8 +319,9 @@ class TProxyService : VpnService() {
         exit()
     }
 
-    @Suppress("SameParameterValue")
-    private fun createNotification(channelName: String) {
+    /** Shows, or updates, the foreground notification with the primary instance's state. */
+    private fun showNotification(channelName: String) {
+        notificationChannel = channelName
         val i = Intent(this, MainActivity::class.java)
         val pi =
             PendingIntent.getActivity(
@@ -317,18 +330,40 @@ class TProxyService : VpnService() {
                 i,
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
-        val notification = NotificationCompat.Builder(this, channelName)
+        val status = statusText()
         val notify =
-            notification
+            NotificationCompat.Builder(this, channelName)
                 .setContentTitle(getString(R.string.app_name))
+                .setContentText(status)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(status))
                 .setSmallIcon(R.drawable.ic_stat_name)
                 .setContentIntent(pi)
+                .setOnlyAlertOnce(true)
+                .setOngoing(true)
                 .build()
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(1, notify)
         } else {
             startForeground(1, notify, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         }
+    }
+
+    private fun statusText(): String? {
+        val all = instances
+        val primary = all.firstOrNull { it.isPrimaryVpn } ?: return null
+        val text =
+            when (primary.status) {
+                InstanceStatus.STARTING -> getString(R.string.connecting)
+                InstanceStatus.RUNNING -> primary.configName
+                InstanceStatus.RESTARTING -> getString(R.string.reconnecting, primary.configName)
+                InstanceStatus.ERROR ->
+                    getString(R.string.connection_failed, primary.configName) +
+                        primary.errorMessage?.let { "\n$it" }.orEmpty()
+            }
+        val others = all.size - 1
+        return if (others > 0) {
+            resources.getQuantityString(R.plurals.notification_more_instances, others, text, others)
+        } else text
     }
 
     private fun exit() {

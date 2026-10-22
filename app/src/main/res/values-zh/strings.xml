@@ -97,6 +97,8 @@
     <string name="download_success">下载成功</string>
     <string name="download_failed">下载失败</string>
     <string name="connecting">连接中…</string>
+    <string name="reconnecting">正在重新连接 %1$s…</string>
+    <string name="connection_failed">%1$s 失败</string>
     <string name="downloading">下载中… %1$d%%</string>
     <string name="downloading_no_size">下载中…</string>
     <string name="download_cancelled">下载已取消</string>
@@ -122,4 +124,7 @@
     <string name="theme_dark">深色</string>
     <string name="auto">自动</string>
     <string name="socks_user">SOCKS 用户</string>
+    <plurals name="notification_more_instances">
+        <item quantity="other">%1$s · 另有 %2$d 个</item>
+    </plurals>
 </resources>

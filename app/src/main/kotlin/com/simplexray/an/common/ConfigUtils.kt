@@ -4,6 +4,7 @@
 package com.simplexray.an.common
 
 import android.util.Log
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -28,27 +29,32 @@ object ConfigUtils {
         return formattedContent
     }
 
+    /**
+     * Adds a StatsService API on apiAddress:apiPort and turns on outbound traffic counters, keeping
+     * whatever api, stats and policy settings the config already has.
+     */
     @Throws(JSONException::class)
     fun injectStatsService(apiAddress: String, apiPort: Int, configContent: String): String {
         val jsonObject = JSONObject(configContent)
 
-        val apiObject = JSONObject()
-        apiObject.put("tag", "api")
-        apiObject.put("listen", "$apiAddress:$apiPort")
-        val servicesArray = org.json.JSONArray()
-        servicesArray.put("StatsService")
-        apiObject.put("services", servicesArray)
+        val api = jsonObject.optJSONObject("api") ?: JSONObject()
+        if (!api.has("tag")) api.put("tag", "api")
+        api.put("listen", "$apiAddress:$apiPort")
+        val services = api.optJSONArray("services") ?: JSONArray()
+        if ((0 until services.length()).none { services.optString(it) == "StatsService" }) {
+            services.put("StatsService")
+        }
+        api.put("services", services)
+        jsonObject.put("api", api)
 
-        jsonObject.put("api", apiObject)
-        jsonObject.put("stats", JSONObject())
+        if (jsonObject.optJSONObject("stats") == null) jsonObject.put("stats", JSONObject())
 
-        val policyObject = JSONObject()
-        val systemObject = JSONObject()
-        systemObject.put("statsOutboundUplink", true)
-        systemObject.put("statsOutboundDownlink", true)
-        policyObject.put("system", systemObject)
-
-        jsonObject.put("policy", policyObject)
+        val policy = jsonObject.optJSONObject("policy") ?: JSONObject()
+        val system = policy.optJSONObject("system") ?: JSONObject()
+        system.put("statsOutboundUplink", true)
+        system.put("statsOutboundDownlink", true)
+        policy.put("system", system)
+        jsonObject.put("policy", policy)
 
         return jsonObject.toString(2)
     }
@@ -78,7 +84,7 @@ object ConfigUtils {
                     extractPortsRecursive(value, ports)
                 }
 
-                is org.json.JSONArray -> {
+                is JSONArray -> {
                     for (i in 0 until value.length()) {
                         val item = value.get(i)
                         if (item is JSONObject) {

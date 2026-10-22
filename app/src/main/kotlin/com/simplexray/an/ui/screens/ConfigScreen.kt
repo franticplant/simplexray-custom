@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -39,7 +40,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
@@ -52,7 +52,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.simplexray.an.R
-import com.simplexray.an.common.formatBytes
 import com.simplexray.an.core.InstanceStatus
 import com.simplexray.an.viewmodel.MainViewModel
 import java.io.File
@@ -83,7 +82,6 @@ fun ConfigScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 mainViewModel.refreshConfigFileList()
-                mainViewModel.refreshActiveInstances()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -92,10 +90,8 @@ fun ConfigScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        mainViewModel.refreshConfigFileList()
-        mainViewModel.refreshActiveInstances()
-    }
+    LaunchedEffect(Unit) { mainViewModel.refreshConfigFileList() }
+    PollCoreStats(mainViewModel)
 
     val hapticFeedback = LocalHapticFeedback.current
     val reorderableLazyListState =
@@ -126,8 +122,9 @@ fun ConfigScreen(
                 items(files, key = { it }) { file ->
                     ReorderableItem(reorderableLazyListState, key = file) {
                         val isSelected = file == selectedFile
-                        val activeInfo = activeInstances.find { it.configPath == file.absolutePath }
-                        val isRunning = activeInfo?.status == InstanceStatus.RUNNING
+                        val instance = activeInstances.find {
+                            it.info.configPath == file.absolutePath
+                        }
 
                         Card(
                             modifier =
@@ -192,41 +189,37 @@ fun ConfigScreen(
                                                 Spacer(modifier = Modifier.width(6.dp))
                                             }
 
-                                            if (isRunning) {
-                                                AssistChip(
-                                                    onClick = {},
-                                                    label = {
-                                                        Text(
-                                                            "Active (Port ${activeInfo.apiPort})",
-                                                            fontSize = 11.sp,
-                                                        )
-                                                    },
-                                                    colors =
-                                                        AssistChipDefaults.assistChipColors(
-                                                            containerColor = Color(0xFF2E7D32),
-                                                            labelColor = Color.White,
-                                                        ),
-                                                )
-                                            } else {
-                                                AssistChip(
-                                                    onClick = {},
-                                                    label = { Text("Stopped", fontSize = 11.sp) },
-                                                    colors =
-                                                        AssistChipDefaults.assistChipColors(
-                                                            containerColor =
-                                                                MaterialTheme.colorScheme
-                                                                    .surfaceVariant,
-                                                            labelColor =
-                                                                MaterialTheme.colorScheme
-                                                                    .onSurfaceVariant,
-                                                        ),
-                                                )
-                                            }
+                                            val (chipText, chipColor) =
+                                                when (instance?.info?.status) {
+                                                    null ->
+                                                        "Stopped" to
+                                                            MaterialTheme.colorScheme.surfaceVariant
+                                                    InstanceStatus.STARTING ->
+                                                        "Starting" to
+                                                            MaterialTheme.colorScheme.surfaceVariant
+                                                    InstanceStatus.RUNNING ->
+                                                        "Running" to
+                                                            MaterialTheme.colorScheme.primary
+                                                    InstanceStatus.RESTARTING ->
+                                                        "Restarting" to
+                                                            MaterialTheme.colorScheme.tertiary
+                                                    InstanceStatus.ERROR ->
+                                                        "Failed" to MaterialTheme.colorScheme.error
+                                                }
+                                            AssistChip(
+                                                onClick = {},
+                                                label = { Text(chipText, fontSize = 11.sp) },
+                                                colors =
+                                                    AssistChipDefaults.assistChipColors(
+                                                        containerColor = chipColor,
+                                                        labelColor = contentColorFor(chipColor),
+                                                    ),
+                                            )
                                         }
                                     }
 
                                     Switch(
-                                        checked = isRunning,
+                                        checked = instance?.info?.isActive == true,
                                         onCheckedChange = {
                                             mainViewModel.toggleInstance(file.absolutePath)
                                         },
@@ -247,18 +240,27 @@ fun ConfigScreen(
                                     }
                                 }
 
-                                if (activeInfo?.status == InstanceStatus.RUNNING) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text(
-                                            text =
-                                                "Traffic: ↑ ${formatBytes(activeInfo.uplink)}  ↓ ${formatBytes(activeInfo.downlink)}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
+                                if (instance != null) {
+                                    val stats = instance.stats
+                                    Text(
+                                        text =
+                                            if (stats != null)
+                                                formatRates(stats.uplinkRate, stats.downlinkRate)
+                                            else statusLabel(instance),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = statusColor(instance),
+                                        modifier = Modifier.padding(top = 8.dp),
+                                    )
+                                    instance.info.errorMessage
+                                        ?.takeIf { instance.info.status != InstanceStatus.RUNNING }
+                                        ?.let { message ->
+                                            Text(
+                                                text = message,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.error,
+                                                maxLines = 3,
+                                            )
+                                        }
                                 }
                             }
                         }
