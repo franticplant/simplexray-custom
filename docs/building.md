@@ -79,6 +79,7 @@ ln -s ../../scripts/secret-scan.sh .git/hooks/pre-commit
 
 Release APKs are reproducible from the tag. Xray-core is built with
 `-trimpath`, no build ID and no VCS stamping. The ndk-build output maps source
-paths and has no build ID. The APK carries no dependency-metadata block.
+paths, has no build ID, and its source list is sorted bytewise, independent
+of the locale. The APK carries no dependency-metadata block.
 `scripts/verify-reproducible.sh <tag>` checks a published release. The release
 workflow runs the same check on a second runner.

@@ -188,6 +188,16 @@ jobs:
           pip install --quiet apksigcopier==1.1.1
           scripts/verify-reproducible.sh "$TAG" "$RUNNER_TEMP/official"
 
+      # Compare these against the release with e.g. diffoscope to see what differs.
+      - name: Upload rebuilt APKs
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: reproduce-${{ env.TAG }}
+          path: ${{ runner.temp }}/reproduce/simplexray/app/build/outputs/apk/release/*.apk
+          retention-days: 14
+          if-no-files-found: ignore
+
   publish:
     name: Publish GitHub release
     needs: build
