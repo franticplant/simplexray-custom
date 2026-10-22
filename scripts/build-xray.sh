@@ -24,6 +24,14 @@ ndk=${ANDROID_NDK_HOME:-$sdk/ndk/$ndk_version}
 toolchain=$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin
 src=${XRAY_SRC:-$root/.xray-src}
 
+if [[ -f $ndk/source.properties ]]; then
+    have_ndk=$(grep -m1 '^Pkg.Revision' "$ndk/source.properties" | cut -d= -f2 | tr -d ' \r')
+    if [[ $have_ndk != "$ndk_version" ]]; then
+        echo "NDK at $ndk is $have_ndk, but NDK_VERSION is $ndk_version" >&2
+        exit 1
+    fi
+fi
+
 if [[ ! -x "$toolchain/clang" ]]; then
     echo "NDK $ndk_version not found at $ndk; install it with: sdkmanager 'ndk;$ndk_version'" >&2
     exit 1

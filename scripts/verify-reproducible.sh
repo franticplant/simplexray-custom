@@ -46,6 +46,11 @@ if [[ $have_go != "go$want_go" ]]; then
     echo "warning: $tag was built with go$want_go, this is $have_go; libxray.so will likely differ" >&2
 fi
 
+# An ANDROID_NDK_HOME inherited from the environment (CI images set one) must
+# not override the NDK the release was built with.
+want_ndk=$(grep '^NDK_VERSION=' version.properties | cut -d= -f2)
+export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$want_ndk"
+
 # A fresh Go build cache, so nothing is reused from an earlier build.
 export GOCACHE="$work/gocache" GOTOOLCHAIN=local
 scripts/fetch-geodata.sh
