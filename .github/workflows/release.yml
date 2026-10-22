@@ -173,6 +173,9 @@ jobs:
           ndk=$(grep '^NDK_VERSION=' version.properties | cut -d= -f2)
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$ndk" > /dev/null
+          # Runners preinstall an NDK and export it as ANDROID_NDK_HOME; without
+          # this, build-xray.sh would use that one instead of the pinned NDK.
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk" >> "$GITHUB_ENV"
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
