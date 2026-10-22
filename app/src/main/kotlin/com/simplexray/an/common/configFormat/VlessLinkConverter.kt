@@ -232,7 +232,8 @@ class VlessLinkConverter : ConfigFormatConverter {
         // '+' is literal in URIs (only form encoding means space), and a stray '%' must not throw.
         private fun decode(s: String): String = runCatching {
             URLDecoder.decode(s.replace("+", "%2B"), "UTF-8")
-        }.getOrDefault(s)
+        }
+            .getOrDefault(s)
 
         fun parseQuery(rawQuery: String?): Map<String, String> {
             if (rawQuery.isNullOrEmpty()) return emptyMap()
