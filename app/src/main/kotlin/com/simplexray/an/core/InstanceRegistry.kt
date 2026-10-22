@@ -11,10 +11,10 @@ import org.json.JSONException
 import org.json.JSONObject
 
 /**
- * The running Xray instances, shared across processes. XrayInstanceManager runs the cores in the
- * :native service process and publishes their state here; the UI process reads it back, since it
- * cannot see the manager's in-memory state. The file is replaced atomically, so a reader never sees
- * a partial write.
+ * The supervised Xray instances, shared across processes. InstanceSupervisor runs the cores in the
+ * :native service process, and TProxyService publishes their state here; the UI process reads it
+ * back, since it cannot see the manager's in-memory state. The file is replaced atomically, so a
+ * reader never sees a partial write.
  */
 object InstanceRegistry {
     private const val TAG = "InstanceRegistry"
@@ -58,6 +58,7 @@ object InstanceRegistry {
                     .put("isPrimaryVpn", info.isPrimaryVpn)
                     .put("status", info.status.name)
                     .put("errorMessage", info.errorMessage ?: JSONObject.NULL)
+                    .put("restarts", info.restarts)
             )
         }
         return array.toString()
@@ -76,8 +77,9 @@ object InstanceRegistry {
                 isPrimaryVpn = o.getBoolean("isPrimaryVpn"),
                 status =
                     runCatching { InstanceStatus.valueOf(o.getString("status")) }
-                        .getOrDefault(InstanceStatus.STOPPED),
+                        .getOrDefault(InstanceStatus.ERROR),
                 errorMessage = if (o.isNull("errorMessage")) null else o.getString("errorMessage"),
+                restarts = o.optInt("restarts"),
             )
         }
     }

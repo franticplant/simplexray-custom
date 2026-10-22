@@ -26,6 +26,7 @@ class InstanceRegistryTest {
                     apiPort = 20000,
                     status = InstanceStatus.ERROR,
                     errorMessage = "exec failed",
+                    restarts = 2,
                 ),
             )
 
@@ -33,22 +34,15 @@ class InstanceRegistryTest {
     }
 
     @Test
-    fun encode_leavesOutStats() {
-        val info =
-            XrayInstanceInfo(configPath = "/a.json", configName = "a", uplink = 5, downlink = 7)
-
-        val decoded = InstanceRegistry.decode(InstanceRegistry.encode(listOf(info))).single()
-
-        assertEquals(0L, decoded.uplink)
-        assertEquals(0L, decoded.downlink)
-    }
-
-    @Test
-    fun decode_unknownStatusIsStopped() {
+    fun decode_unknownStatusIsAnError_missingRestartsIsZero() {
+        // As an older or newer version of the service might write it.
         val json =
             """[{"configPath":"/a.json","configName":"a","apiAddress":"127.0.0.1","apiPort":1,""" +
                 """"isPrimaryVpn":false,"status":"PAUSED","errorMessage":null}]"""
 
-        assertEquals(InstanceStatus.STOPPED, InstanceRegistry.decode(json).single().status)
+        val info = InstanceRegistry.decode(json).single()
+
+        assertEquals(InstanceStatus.ERROR, info.status)
+        assertEquals(0, info.restarts)
     }
 }

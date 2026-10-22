@@ -12,6 +12,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.net.VpnService
+import android.os.SystemClock
 import android.util.Log
 import androidx.activity.result.ActivityResultLauncher
 import androidx.core.content.ContextCompat
@@ -48,7 +49,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -82,8 +86,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val activityScope: CoroutineScope = viewModelScope
     private var compressedBackupData: ByteArray? = null
 
-    // One stats client per running instance, keyed by "address:port"; guarded by statsLock.
+    // Per running instance, keyed by its API "address:port" (new on every restart, so a restart
+    // starts its counters afresh): a stats client and the last traffic reading. Guarded by
+    // statsLock.
     private val statsClients = mutableMapOf<String, CoreStatsClient>()
+    private val lastTraffic = mutableMapOf<String, Pair<TrafficState, Long>>()
     private val statsLock = Any()
 
     private val fileManager: FileManager = FileManager(application, prefs)
@@ -134,8 +141,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _coreStatsState = MutableStateFlow(CoreStatsState())
     val coreStatsState: StateFlow<CoreStatsState> = _coreStatsState.asStateFlow()
 
-    private val _activeInstances = MutableStateFlow<List<XrayInstanceInfo>>(emptyList())
-    val activeInstances: StateFlow<List<XrayInstanceInfo>> = _activeInstances.asStateFlow()
+    private val _activeInstances = MutableStateFlow<List<InstanceState>>(emptyList())
+    val activeInstances: StateFlow<List<InstanceState>> = _activeInstances.asStateFlow()
 
     private val _controlMenuClickable = MutableStateFlow(true)
     val controlMenuClickable: StateFlow<Boolean> = _controlMenuClickable.asStateFlow()
@@ -367,9 +374,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return filePath
     }
 
+    private fun apiKey(info: XrayInstanceInfo) = "${info.apiAddress}:${info.apiPort}"
+
     private fun statsClientFor(info: XrayInstanceInfo): CoreStatsClient =
         synchronized(statsLock) {
-            statsClients.getOrPut("${info.apiAddress}:${info.apiPort}") {
+            statsClients.getOrPut(apiKey(info)) {
                 CoreStatsClient.create(info.apiAddress, info.apiPort)
             }
         }
@@ -377,64 +386,60 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun closeStatsClients(keep: Set<String> = emptySet()) {
         val stale =
             synchronized(statsLock) {
+                lastTraffic.keys.retainAll(keep)
                 val keys = statsClients.keys - keep
                 keys.mapNotNull { statsClients.remove(it) }
             }
         stale.forEach { it.close() }
     }
 
+    /** The instance's stats, or null if its API does not answer. */
+    private suspend fun fetchStats(info: XrayInstanceInfo): InstanceStats? {
+        val client = statsClientFor(info)
+        val sys = client.getSystemStats() ?: return null
+        val traffic = client.getTraffic() ?: TrafficState(0, 0)
+        val now = SystemClock.elapsedRealtime()
+        val previous = synchronized(statsLock) { lastTraffic.put(apiKey(info), traffic to now) }
+        val (before, then) = previous ?: (traffic to now)
+        return InstanceStats(
+            uplink = traffic.uplink,
+            downlink = traffic.downlink,
+            uplinkRate = ratePerSecond(before.uplink, traffic.uplink, now - then),
+            downlinkRate = ratePerSecond(before.downlink, traffic.downlink, now - then),
+            numGoroutine = sys.numGoroutine,
+            alloc = sys.alloc,
+            uptime = sys.uptime,
+        )
+    }
+
     /**
-     * Reads the instances the service process is running from InstanceRegistry and fetches each
-     * running one's traffic and runtime stats over its gRPC API.
+     * Reads the instances the service process supervises from InstanceRegistry and fetches the
+     * stats of the running ones over their gRPC APIs, all at once.
      */
-    private suspend fun refreshInstances(): List<XrayInstanceInfo> {
+    private suspend fun refreshInstances(): List<InstanceState> = coroutineScope {
         val registered =
             if (_isServiceEnabled.value) InstanceRegistry.read(application) else emptyList()
         val running = registered.filter { it.status == InstanceStatus.RUNNING }
-        closeStatsClients(keep = running.map { "${it.apiAddress}:${it.apiPort}" }.toSet())
+        closeStatsClients(keep = running.map(::apiKey).toSet())
 
-        val infos = registered.map { info ->
-            if (info.status != InstanceStatus.RUNNING) return@map info
-            val client = statsClientFor(info)
-            val stats = client.getSystemStats()
-            val traffic = client.getTraffic()
-            info.copy(
-                uplink = traffic?.uplink ?: 0,
-                downlink = traffic?.downlink ?: 0,
-                numGoroutine = stats?.numGoroutine ?: 0,
-                alloc = stats?.alloc ?: 0,
-                uptime = stats?.uptime ?: 0,
-            )
-        }
-        _activeInstances.value = infos
-        return infos
+        val states =
+            registered
+                .map { info ->
+                    async {
+                        val stats =
+                            if (info.status == InstanceStatus.RUNNING) fetchStats(info) else null
+                        InstanceState(info, stats)
+                    }
+                }
+                .awaitAll()
+        _activeInstances.value = states
+        states
     }
 
+    /** Polls every instance once; the screens showing stats call it every second. */
     suspend fun updateCoreStats() {
         if (!_isServiceEnabled.value) return
-
-        val running = refreshInstances().filter { it.status == InstanceStatus.RUNNING }
-        // The global card follows the instance carrying the VPN; traffic is summed over all.
-        val primary = running.firstOrNull { it.isPrimaryVpn } ?: running.firstOrNull() ?: return
-        val client = statsClientFor(primary)
-        val stats = client.getSystemStats() ?: return
-
-        _coreStatsState.value =
-            CoreStatsState(
-                uplink = running.sumOf { it.uplink },
-                downlink = running.sumOf { it.downlink },
-                numGoroutine = stats.numGoroutine,
-                numGC = stats.numGC,
-                alloc = stats.alloc,
-                totalAlloc = stats.totalAlloc,
-                sys = stats.sys,
-                mallocs = stats.mallocs,
-                frees = stats.frees,
-                liveObjects = stats.liveObjects,
-                pauseTotalNs = stats.pauseTotalNs,
-                uptime = stats.uptime,
-            )
-        Log.d(TAG, "Core stats updated")
+        _coreStatsState.value = CoreStatsState.of(refreshInstances())
     }
 
     fun refreshActiveInstances() {
@@ -443,11 +448,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleInstance(configPath: String) {
         viewModelScope.launch {
-            val isRunning =
-                _activeInstances.value.any {
-                    it.configPath == configPath && it.status == InstanceStatus.RUNNING
-                }
-            if (isRunning) {
+            val isActive =
+                _activeInstances.value.any { it.info.configPath == configPath && it.info.isActive }
+            if (isActive) {
                 stopInstanceConfig(configPath)
             } else {
                 startInstanceConfig(configPath)
@@ -475,6 +478,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun stopInstanceConfig(configPath: String) {
         viewModelScope.launch {
             prefs.setConfigActive(configPath, false)
+            val carriesVpn =
+                _activeInstances.value.any {
+                    it.info.configPath == configPath && it.info.isPrimaryVpn
+                }
+            if (carriesVpn) {
+                // Without it the VPN has nowhere to send traffic, so turn the VPN off too.
+                stopTProxyService()
+                return@launch
+            }
             val intent =
                 Intent(application, TProxyService::class.java)
                     .setAction(TProxyService.ACTION_STOP_INSTANCE)

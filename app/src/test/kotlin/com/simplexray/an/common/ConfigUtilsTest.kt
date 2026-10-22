@@ -86,4 +86,41 @@ class ConfigUtilsTest {
     fun extractPortsFromJson_returnsEmptyOnInvalidJson() {
         assertEquals(emptySet<Int>(), ConfigUtils.extractPortsFromJson("not json"))
     }
+
+    @Test
+    fun injectStatsService_keepsTheConfigsOwnSettings() {
+        val original =
+            """{"api":{"tag":"ctl","services":["HandlerService"]},"stats":{},
+               "policy":{"levels":{"0":{"handshake":2}},"system":{"statsInboundUplink":true}}}"""
+
+        val config = JSONObject(ConfigUtils.injectStatsService("127.0.0.9", 20000, original))
+
+        val api = config.getJSONObject("api")
+        assertEquals("ctl", api.getString("tag"))
+        assertEquals("127.0.0.9:20000", api.getString("listen"))
+        val services = api.getJSONArray("services")
+        assertEquals(
+            listOf("HandlerService", "StatsService"),
+            (0 until services.length()).map(services::getString),
+        )
+        val policy = config.getJSONObject("policy")
+        assertEquals(2, policy.getJSONObject("levels").getJSONObject("0").getInt("handshake"))
+        val system = policy.getJSONObject("system")
+        assertTrue(system.getBoolean("statsInboundUplink"))
+        assertTrue(system.getBoolean("statsOutboundUplink"))
+    }
+
+    @Test
+    fun injectStatsService_doesNotDuplicateStatsService() {
+        val config =
+            JSONObject(
+                ConfigUtils.injectStatsService(
+                    "127.0.0.9",
+                    20000,
+                    """{"api":{"services":["StatsService"]}}""",
+                )
+            )
+
+        assertEquals(1, config.getJSONObject("api").getJSONArray("services").length())
+    }
 }
