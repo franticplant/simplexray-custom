@@ -17,7 +17,8 @@ prop() { grep "^$1=" "$root/version.properties" | cut -d= -f2- | tr -d '\r'; }
 
 xray_version=$(prop XRAY_CORE_VERSION)
 ndk_version=$(prop NDK_VERSION)
-min_api=$(grep -oP 'minSdk\s+\K[0-9]+' "$root/app/build.gradle")
+min_api=$(grep -oP 'minSdk\s*=?\s*\K[0-9]+' "$root/app/build.gradle" || true)
+[[ -n $min_api ]] || { echo "could not read minSdk from app/build.gradle" >&2; exit 1; }
 sdk=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}
 ndk=${ANDROID_NDK_HOME:-$sdk/ndk/$ndk_version}
 toolchain=$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin
