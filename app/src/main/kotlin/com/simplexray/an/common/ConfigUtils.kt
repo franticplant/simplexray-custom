@@ -1,7 +1,9 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.common
 
 import android.util.Log
-import com.simplexray.an.prefs.Preferences
 import org.json.JSONException
 import org.json.JSONObject
 
@@ -11,7 +13,7 @@ object ConfigUtils {
     @Throws(JSONException::class)
     fun formatConfigContent(content: String): String {
         val jsonObject = JSONObject(content)
-        (jsonObject["log"] as? JSONObject)?.apply {
+        jsonObject.optJSONObject("log")?.apply {
             if (has("access") && optString("access") != "none") {
                 remove("access")
                 Log.d(TAG, "Removed log.access")
@@ -27,12 +29,12 @@ object ConfigUtils {
     }
 
     @Throws(JSONException::class)
-    fun injectStatsService(prefs: Preferences, configContent: String): String {
+    fun injectStatsService(apiAddress: String, apiPort: Int, configContent: String): String {
         val jsonObject = JSONObject(configContent)
 
         val apiObject = JSONObject()
         apiObject.put("tag", "api")
-        apiObject.put("listen", "${prefs.apiAddress}:${prefs.apiPort}")
+        apiObject.put("listen", "$apiAddress:$apiPort")
         val servicesArray = org.json.JSONArray()
         servicesArray.put("StatsService")
         apiObject.put("services", servicesArray)
@@ -88,4 +90,3 @@ object ConfigUtils {
         }
     }
 }
-

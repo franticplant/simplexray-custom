@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.ui.screens
 
 import android.content.Intent
@@ -25,12 +28,12 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SheetState
@@ -53,6 +56,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.simplexray.an.R
 import com.simplexray.an.common.ThemeMode
@@ -66,9 +70,12 @@ fun SettingsScreen(
     mainViewModel: MainViewModel,
     geoipFilePickerLauncher: ActivityResultLauncher<Array<String>>,
     geositeFilePickerLauncher: ActivityResultLauncher<Array<String>>,
-    scrollState: androidx.compose.foundation.ScrollState
+    scrollState: androidx.compose.foundation.ScrollState,
 ) {
     val context = LocalContext.current
+    val geoipDefaultUrl = stringResource(R.string.geoip_url)
+    val geositeDefaultUrl = stringResource(R.string.geosite_url)
+    val sourceUrl = stringResource(R.string.source_url)
     val settingsState by mainViewModel.settingsState.collectAsStateWithLifecycle()
     val geoipProgress by mainViewModel.geoipDownloadProgress.collectAsStateWithLifecycle()
     val geositeProgress by mainViewModel.geositeDownloadProgress.collectAsStateWithLifecycle()
@@ -86,85 +93,94 @@ fun SettingsScreen(
     var editingRuleFile by remember { mutableStateOf<String?>(null) }
     var ruleFileUrl by remember { mutableStateOf("") }
 
-    val themeOptions = listOf(
-        ThemeMode.Light,
-        ThemeMode.Dark,
-        ThemeMode.Auto
-    )
+    val themeOptions =
+        listOf(
+            ThemeMode.Light,
+            ThemeMode.Dark,
+            ThemeMode.Auto,
+        )
     var selectedThemeOption by remember { mutableStateOf(settingsState.switches.themeMode) }
     var themeExpanded by remember { mutableStateOf(false) }
 
     if (editingRuleFile != null) {
         ModalBottomSheet(
             onDismissRequest = { editingRuleFile = null },
-            sheetState = sheetState
+            sheetState = sheetState,
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 OutlinedTextField(
                     value = ruleFileUrl,
                     onValueChange = { ruleFileUrl = it },
                     label = { Text("URL") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 12.dp, end = 12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp),
                     trailingIcon = {
                         val clipboardManager = LocalClipboard.current
-                        IconButton(onClick = {
-                            scope.launch {
-                                clipboardManager.getClipEntry()?.clipData?.getItemAt(0)?.text
-                                    .let {
-                                        ruleFileUrl = it.toString()
-                                    }
+                        IconButton(
+                            onClick = {
+                                scope.launch {
+                                    clipboardManager
+                                        .getClipEntry()
+                                        ?.clipData
+                                        ?.getItemAt(0)
+                                        ?.text
+                                        .let {
+                                            ruleFileUrl = it.toString()
+                                        }
+                                }
                             }
-                        }) {
+                        ) {
                             Icon(
                                 painter = painterResource(id = R.drawable.paste),
-                                contentDescription = "Paste"
+                                contentDescription = "Paste",
                             )
                         }
-                    }
+                    },
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                TextButton(onClick = {
-                    ruleFileUrl =
-                        if (editingRuleFile == "geoip.dat") context.getString(R.string.geoip_url)
-                        else context.getString(R.string.geosite_url)
-                }) {
+                TextButton(
+                    onClick = {
+                        ruleFileUrl =
+                            if (editingRuleFile == "geoip.dat") geoipDefaultUrl
+                            else geositeDefaultUrl
+                    }
+                ) {
                     Text(stringResource(id = R.string.restore_default_url))
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(end = 8.dp),
-                    horizontalArrangement = Arrangement.End
+                    modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+                    horizontalArrangement = Arrangement.End,
                 ) {
-                    TextButton(onClick = {
-                        scope.launch { sheetState.hide() }.invokeOnCompletion {
-                            if (!sheetState.isVisible) {
-                                editingRuleFile = null
-                            }
+                    TextButton(
+                        onClick = {
+                            scope
+                                .launch { sheetState.hide() }
+                                .invokeOnCompletion {
+                                    if (!sheetState.isVisible) {
+                                        editingRuleFile = null
+                                    }
+                                }
                         }
-                    }) {
+                    ) {
                         Text(stringResource(R.string.cancel))
                     }
                     Spacer(modifier = Modifier.width(8.dp))
-                    Button(onClick = {
-                        mainViewModel.downloadRuleFile(ruleFileUrl, editingRuleFile!!)
-                        scope.launch { sheetState.hide() }.invokeOnCompletion {
-                            if (!sheetState.isVisible) {
-                                editingRuleFile = null
-                            }
+                    Button(
+                        onClick = {
+                            mainViewModel.downloadRuleFile(ruleFileUrl, editingRuleFile!!)
+                            scope
+                                .launch { sheetState.hide() }
+                                .invokeOnCompletion {
+                                    if (!sheetState.isVisible) {
+                                        editingRuleFile = null
+                                    }
+                                }
                         }
-                    }) {
+                    ) {
                         Text(stringResource(R.string.update))
                     }
                 }
@@ -180,7 +196,7 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        mainViewModel.restoreDefaultGeoip { }
+                        mainViewModel.restoreDefaultGeoip {}
                         showGeoipDeleteDialog = false
                     }
                 ) {
@@ -191,7 +207,7 @@ fun SettingsScreen(
                 TextButton(onClick = { showGeoipDeleteDialog = false }) {
                     Text(stringResource(R.string.cancel))
                 }
-            }
+            },
         )
     }
 
@@ -203,7 +219,7 @@ fun SettingsScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        mainViewModel.restoreDefaultGeosite { }
+                        mainViewModel.restoreDefaultGeosite {}
                         showGeositeDeleteDialog = false
                     }
                 ) {
@@ -214,7 +230,7 @@ fun SettingsScreen(
                 TextButton(onClick = { showGeositeDeleteDialog = false }) {
                     Text(stringResource(R.string.cancel))
                 }
-            }
+            },
         )
     }
 
@@ -226,7 +242,7 @@ fun SettingsScreen(
                 Text(
                     stringResource(
                         R.string.new_version_available_message,
-                        newVersionTag!!
+                        newVersionTag!!,
                     )
                 )
             },
@@ -239,16 +255,11 @@ fun SettingsScreen(
                 TextButton(onClick = { mainViewModel.clearNewVersionAvailable() }) {
                     Text(stringResource(id = android.R.string.cancel))
                 }
-            }
+            },
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .padding(10.dp)
-    ) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(scrollState).padding(10.dp)) {
         PreferenceCategoryTitle(stringResource(R.string.general))
 
         ListItem(
@@ -259,9 +270,9 @@ fun SettingsScreen(
                     checked = settingsState.switches.useTemplateEnabled,
                     onCheckedChange = {
                         mainViewModel.setUseTemplateEnabled(it)
-                    }
+                    },
                 )
-            }
+            },
         )
 
         ListItem(
@@ -272,60 +283,67 @@ fun SettingsScreen(
             trailingContent = {
                 ExposedDropdownMenuBox(
                     expanded = themeExpanded,
-                    onExpandedChange = { themeExpanded = it }
+                    onExpandedChange = { themeExpanded = it },
                 ) {
                     TextButton(
                         onClick = {},
-                        modifier = Modifier
-                            .menuAnchor(MenuAnchorType.PrimaryEditable, true),
-                        colors = ButtonDefaults.textButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainer
-                        )
+                        modifier =
+                            Modifier.menuAnchor(
+                                ExposedDropdownMenuAnchorType.PrimaryEditable,
+                                true,
+                            ),
+                        colors =
+                            ButtonDefaults.textButtonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainer
+                            ),
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Text(
-                                text = stringResource(
-                                    id = when (selectedThemeOption) {
-                                        ThemeMode.Light -> R.string.theme_light
-                                        ThemeMode.Dark -> R.string.theme_dark
-                                        ThemeMode.Auto -> R.string.auto
-                                    }
-                                ),
+                                text =
+                                    stringResource(
+                                        id =
+                                            when (selectedThemeOption) {
+                                                ThemeMode.Light -> R.string.theme_light
+                                                ThemeMode.Dark -> R.string.theme_dark
+                                                ThemeMode.Auto -> R.string.auto
+                                            }
+                                    ),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary
+                                color = MaterialTheme.colorScheme.primary,
                             )
                             if (themeExpanded) {
                                 Icon(
                                     imageVector = Icons.Filled.KeyboardArrowUp,
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
+                                    tint = MaterialTheme.colorScheme.primary,
                                 )
                             } else {
                                 Icon(
                                     imageVector = Icons.Filled.KeyboardArrowDown,
                                     contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
+                                    tint = MaterialTheme.colorScheme.primary,
                                 )
                             }
                         }
                     }
                     ExposedDropdownMenu(
                         expanded = themeExpanded,
-                        onDismissRequest = { themeExpanded = false }
+                        onDismissRequest = { themeExpanded = false },
                     ) {
                         themeOptions.forEach { option ->
                             DropdownMenuItem(
                                 text = {
                                     Text(
                                         stringResource(
-                                            id = when (option) {
-                                                ThemeMode.Light -> R.string.theme_light
-                                                ThemeMode.Dark -> R.string.theme_dark
-                                                ThemeMode.Auto -> R.string.auto
-                                            }
+                                            id =
+                                                when (option) {
+                                                    ThemeMode.Light -> R.string.theme_light
+                                                    ThemeMode.Dark -> R.string.theme_dark
+                                                    ThemeMode.Auto -> R.string.auto
+                                                }
                                         )
                                     )
                                 },
@@ -333,28 +351,29 @@ fun SettingsScreen(
                                     selectedThemeOption = option
                                     mainViewModel.setTheme(option)
                                     themeExpanded = false
-                                }
+                                },
                             )
                         }
                     }
                 }
-            }
+            },
         )
 
         PreferenceCategoryTitle(stringResource(R.string.vpn_interface))
 
         ListItem(
-            modifier = Modifier.clickable {
-                mainViewModel.navigateToAppList()
-            },
+            modifier =
+                Modifier.clickable {
+                    mainViewModel.navigateToAppList()
+                },
             headlineContent = { Text(stringResource(R.string.apps_title)) },
             supportingContent = { Text(stringResource(R.string.apps_summary)) },
             trailingContent = {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null
+                    contentDescription = null,
                 )
-            }
+            },
         )
 
         ListItem(
@@ -365,9 +384,9 @@ fun SettingsScreen(
                     checked = settingsState.switches.disableVpn,
                     onCheckedChange = {
                         mainViewModel.setDisableVpnEnabled(it)
-                    }
+                    },
                 )
-            }
+            },
         )
 
         EditableListItemWithBottomSheet(
@@ -380,7 +399,7 @@ fun SettingsScreen(
             errorMessage = settingsState.socksAddress.error,
             enabled = !vpnDisabled,
             sheetState = sheetState,
-            scope = scope
+            scope = scope,
         )
 
         EditableListItemWithBottomSheet(
@@ -393,7 +412,7 @@ fun SettingsScreen(
             errorMessage = settingsState.socksPort.error,
             enabled = !vpnDisabled,
             sheetState = sheetState,
-            scope = scope
+            scope = scope,
         )
 
         EditableListItemWithBottomSheet(
@@ -406,7 +425,7 @@ fun SettingsScreen(
             errorMessage = settingsState.socksUser.error,
             enabled = !vpnDisabled,
             sheetState = sheetState,
-            scope = scope
+            scope = scope,
         )
 
         EditableListItemWithBottomSheet(
@@ -419,7 +438,7 @@ fun SettingsScreen(
             errorMessage = settingsState.socksPass.error,
             enabled = !vpnDisabled,
             sheetState = sheetState,
-            scope = scope
+            scope = scope,
         )
 
         EditableListItemWithBottomSheet(
@@ -432,7 +451,7 @@ fun SettingsScreen(
             errorMessage = settingsState.dnsIpv4.error,
             enabled = !vpnDisabled,
             sheetState = sheetState,
-            scope = scope
+            scope = scope,
         )
 
         EditableListItemWithBottomSheet(
@@ -445,7 +464,7 @@ fun SettingsScreen(
             errorMessage = settingsState.dnsIpv6.error,
             enabled = settingsState.switches.ipv6Enabled && !vpnDisabled,
             sheetState = sheetState,
-            scope = scope
+            scope = scope,
         )
 
         ListItem(
@@ -457,9 +476,9 @@ fun SettingsScreen(
                     onCheckedChange = {
                         mainViewModel.setIpv6Enabled(it)
                     },
-                    enabled = !vpnDisabled
+                    enabled = !vpnDisabled,
                 )
-            }
+            },
         )
 
         ListItem(
@@ -471,9 +490,9 @@ fun SettingsScreen(
                     onCheckedChange = {
                         mainViewModel.setHttpProxyEnabled(it)
                     },
-                    enabled = !vpnDisabled
+                    enabled = !vpnDisabled,
                 )
-            }
+            },
         )
 
         ListItem(
@@ -485,9 +504,9 @@ fun SettingsScreen(
                     onCheckedChange = {
                         mainViewModel.setBypassLanEnabled(it)
                     },
-                    enabled = !vpnDisabled
+                    enabled = !vpnDisabled,
                 )
-            }
+            },
         )
 
         PreferenceCategoryTitle(stringResource(R.string.rule_files_category_title))
@@ -501,39 +520,43 @@ fun SettingsScreen(
                         IconButton(onClick = { mainViewModel.cancelDownload("geoip.dat") }) {
                             Icon(
                                 painter = painterResource(id = R.drawable.cancel),
-                                contentDescription = stringResource(R.string.cancel)
+                                contentDescription = stringResource(R.string.cancel),
                             )
                         }
                     } else {
-                        IconButton(onClick = {
-                            ruleFileUrl = settingsState.info.geoipUrl
-                            editingRuleFile = "geoip.dat"
-                            scope.launch { sheetState.show() }
-                        }) {
+                        IconButton(
+                            onClick = {
+                                ruleFileUrl = settingsState.info.geoipUrl
+                                editingRuleFile = "geoip.dat"
+                                scope.launch { sheetState.show() }
+                            }
+                        ) {
                             Icon(
                                 painter = painterResource(id = R.drawable.cloud_download),
-                                contentDescription = stringResource(R.string.rule_file_update_url)
+                                contentDescription = stringResource(R.string.rule_file_update_url),
                             )
                         }
                         if (!settingsState.files.isGeoipCustom) {
-                            IconButton(onClick = { geoipFilePickerLauncher.launch(arrayOf("*/*")) }) {
+                            IconButton(
+                                onClick = { geoipFilePickerLauncher.launch(arrayOf("*/*")) }
+                            ) {
                                 Icon(
                                     painter = painterResource(id = R.drawable.place_item),
-                                    contentDescription = stringResource(R.string.import_file)
+                                    contentDescription = stringResource(R.string.import_file),
                                 )
                             }
                         } else {
                             IconButton(onClick = { showGeoipDeleteDialog = true }) {
                                 Icon(
                                     painter = painterResource(id = R.drawable.delete),
-                                    contentDescription = stringResource(R.string.reset_file)
+                                    contentDescription = stringResource(R.string.reset_file),
                                 )
                             }
                         }
                     }
                 }
             },
-            modifier = Modifier
+            modifier = Modifier,
         )
 
         ListItem(
@@ -545,39 +568,43 @@ fun SettingsScreen(
                         IconButton(onClick = { mainViewModel.cancelDownload("geosite.dat") }) {
                             Icon(
                                 painter = painterResource(id = R.drawable.cancel),
-                                contentDescription = stringResource(R.string.cancel)
+                                contentDescription = stringResource(R.string.cancel),
                             )
                         }
                     } else {
-                        IconButton(onClick = {
-                            ruleFileUrl = settingsState.info.geositeUrl
-                            editingRuleFile = "geosite.dat"
-                            scope.launch { sheetState.show() }
-                        }) {
+                        IconButton(
+                            onClick = {
+                                ruleFileUrl = settingsState.info.geositeUrl
+                                editingRuleFile = "geosite.dat"
+                                scope.launch { sheetState.show() }
+                            }
+                        ) {
                             Icon(
                                 painter = painterResource(id = R.drawable.cloud_download),
-                                contentDescription = stringResource(R.string.rule_file_update_url)
+                                contentDescription = stringResource(R.string.rule_file_update_url),
                             )
                         }
                         if (!settingsState.files.isGeositeCustom) {
-                            IconButton(onClick = { geositeFilePickerLauncher.launch(arrayOf("*/*")) }) {
+                            IconButton(
+                                onClick = { geositeFilePickerLauncher.launch(arrayOf("*/*")) }
+                            ) {
                                 Icon(
                                     painter = painterResource(id = R.drawable.place_item),
-                                    contentDescription = stringResource(R.string.import_file)
+                                    contentDescription = stringResource(R.string.import_file),
                                 )
                             }
                         } else {
                             IconButton(onClick = { showGeositeDeleteDialog = true }) {
                                 Icon(
                                     painter = painterResource(id = R.drawable.delete),
-                                    contentDescription = stringResource(R.string.reset_file)
+                                    contentDescription = stringResource(R.string.reset_file),
                                 )
                             }
                         }
                     }
                 }
             },
-            modifier = Modifier
+            modifier = Modifier,
         )
 
         PreferenceCategoryTitle(stringResource(R.string.connectivity_test))
@@ -591,19 +618,21 @@ fun SettingsScreen(
             isError = !settingsState.connectivityTestTarget.isValid,
             errorMessage = settingsState.connectivityTestTarget.error,
             sheetState = sheetState,
-            scope = scope
+            scope = scope,
         )
 
         EditableListItemWithBottomSheet(
             headline = stringResource(R.string.connectivity_test_timeout),
             currentValue = settingsState.connectivityTestTimeout.value,
-            onValueConfirmed = { newValue -> mainViewModel.updateConnectivityTestTimeout(newValue) },
+            onValueConfirmed = { newValue ->
+                mainViewModel.updateConnectivityTestTimeout(newValue)
+            },
             label = stringResource(R.string.connectivity_test_timeout),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             isError = !settingsState.connectivityTestTimeout.isValid,
             errorMessage = settingsState.connectivityTestTimeout.error,
             sheetState = sheetState,
-            scope = scope
+            scope = scope,
         )
 
         PreferenceCategoryTitle(stringResource(R.string.about))
@@ -617,47 +646,50 @@ fun SettingsScreen(
                         onClick = {
                             mainViewModel.checkForUpdates()
                         },
-                        colors = ButtonDefaults.textButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                            disabledContainerColor = Color.Transparent
-                        ),
-                        enabled = !isCheckingForUpdates
+                        colors =
+                            ButtonDefaults.textButtonColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                                disabledContainerColor = Color.Transparent,
+                            ),
+                        enabled = !isCheckingForUpdates,
                     ) {
                         if (isCheckingForUpdates) {
                             CircularProgressIndicator(
-                                modifier = Modifier
-                                    .width(20.dp)
-                                    .height(20.dp),
+                                modifier = Modifier.width(20.dp).height(20.dp),
                                 color = MaterialTheme.colorScheme.primary,
-                                strokeWidth = 2.dp
+                                strokeWidth = 2.dp,
                             )
                         } else {
                             Text(stringResource(R.string.check_for_updates))
                         }
                     }
                 }
-            }
+            },
         )
 
         ListItem(
             headlineContent = { Text(stringResource(R.string.kernel)) },
-            supportingContent = { Text(settingsState.info.kernelVersion) }
+            supportingContent = { Text(settingsState.info.kernelVersion) },
         )
 
         ListItem(
-            modifier = Modifier.clickable {
-                val browserIntent =
-                    Intent(Intent.ACTION_VIEW, Uri.parse(context.getString(R.string.source_url)))
-                context.startActivity(browserIntent)
-            },
+            modifier =
+                Modifier.clickable {
+                    val browserIntent =
+                        Intent(
+                            Intent.ACTION_VIEW,
+                            sourceUrl.toUri(),
+                        )
+                    context.startActivity(browserIntent)
+                },
             headlineContent = { Text(stringResource(R.string.source)) },
             supportingContent = { Text(stringResource(R.string.open_source)) },
             trailingContent = {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null
+                    contentDescription = null,
                 )
-            }
+            },
         )
     }
 }
@@ -674,7 +706,7 @@ fun EditableListItemWithBottomSheet(
     errorMessage: String? = null,
     enabled: Boolean = true,
     sheetState: SheetState,
-    scope: CoroutineScope
+    scope: CoroutineScope,
 ) {
     var showSheet by remember { mutableStateOf(false) }
     var tempValue by remember { mutableStateOf(currentValue) }
@@ -682,13 +714,9 @@ fun EditableListItemWithBottomSheet(
     if (showSheet) {
         ModalBottomSheet(
             onDismissRequest = { showSheet = false },
-            sheetState = sheetState
+            sheetState = sheetState,
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 OutlinedTextField(
                     value = tempValue,
                     onValueChange = { tempValue = it },
@@ -700,37 +728,41 @@ fun EditableListItemWithBottomSheet(
                             Text(text = errorMessage ?: "")
                         }
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 12.dp, end = 12.dp),
+                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp),
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(end = 8.dp),
-                    horizontalArrangement = Arrangement.End
+                    modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+                    horizontalArrangement = Arrangement.End,
                 ) {
-                    TextButton(onClick = {
-                        scope.launch { sheetState.hide() }.invokeOnCompletion {
-                            if (!sheetState.isVisible) {
-                                showSheet = false
-                            }
+                    TextButton(
+                        onClick = {
+                            scope
+                                .launch { sheetState.hide() }
+                                .invokeOnCompletion {
+                                    if (!sheetState.isVisible) {
+                                        showSheet = false
+                                    }
+                                }
                         }
-                    }) {
+                    ) {
                         Text(stringResource(R.string.cancel))
                     }
                     Spacer(modifier = Modifier.width(8.dp))
-                    Button(onClick = {
-                        onValueConfirmed(tempValue)
-                        scope.launch { sheetState.hide() }.invokeOnCompletion {
-                            if (!sheetState.isVisible) {
-                                showSheet = false
-                            }
+                    Button(
+                        onClick = {
+                            onValueConfirmed(tempValue)
+                            scope
+                                .launch { sheetState.hide() }
+                                .invokeOnCompletion {
+                                    if (!sheetState.isVisible) {
+                                        showSheet = false
+                                    }
+                                }
                         }
-                    }) {
+                    ) {
                         Text(stringResource(R.string.confirm))
                     }
                 }
@@ -741,24 +773,25 @@ fun EditableListItemWithBottomSheet(
     ListItem(
         headlineContent = { Text(headline) },
         supportingContent = { Text(currentValue) },
-        modifier = Modifier.clickable(enabled = enabled) {
-            tempValue = currentValue
-            showSheet = true
-        },
+        modifier =
+            Modifier.clickable(enabled = enabled) {
+                tempValue = currentValue
+                showSheet = true
+            },
         trailingContent = {
             if (isError) {
                 Icon(
                     painter = painterResource(id = R.drawable.cancel),
                     contentDescription = errorMessage,
-                    tint = MaterialTheme.colorScheme.error
+                    tint = MaterialTheme.colorScheme.error,
                 )
             } else {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = null
+                    contentDescription = null,
                 )
             }
-        }
+        },
     )
 }
 
@@ -768,6 +801,6 @@ fun PreferenceCategoryTitle(title: String) {
         text = title,
         style = MaterialTheme.typography.titleSmall,
         color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 4.dp)
+        modifier = Modifier.padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 4.dp),
     )
 }

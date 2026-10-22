@@ -1,0 +1,34 @@
+# Keeps the pinned action SHAs and the Gradle dependencies (the version
+# catalog in gradle/libs.versions.toml) moving. Xray-core, Go and the geo data
+# are bumped by .github/workflows/update-xray.yml; the NDK and the
+# hev-socks5-tunnel submodule by hand.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/"
+      - "/.github/actions/setup-build"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: ".github:"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "gradle:"
+    open-pull-requests-limit: 10
+    groups:
+      androidx:
+        patterns: ["androidx.*"]
+      # AGP compiles Kotlin itself, so the two move together.
+      toolchain:
+        patterns: ["org.jetbrains.kotlin*", "com.android.*"]
+      grpc-protobuf:
+        patterns: ["io.grpc*", "com.google.protobuf*"]
+

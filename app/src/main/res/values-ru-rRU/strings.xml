@@ -108,7 +108,6 @@
     <string name="stats_uplink">Исходящий трафик</string>
     <string name="stats_downlink">Входящий трафик</string>
     <string name="stats_num_goroutine">Количество Goroutine(горутин)</string>
-    <string name="stats_num_gc">Количество сборок мусора</string>
     <string name="stats_alloc">Выделенная память</string>
     <string name="stats_uptime">Время работы</string>
     <string name="check_for_updates">Проверить обновления</string>

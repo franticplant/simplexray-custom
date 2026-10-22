@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.activity
 
 import android.content.Intent
@@ -45,30 +48,31 @@ class MainActivity : ComponentActivity() {
 
     private fun initView() {
         val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-        val currentNightMode =
-            resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
-        val isDark = when (mainViewModel.prefs.theme) {
-            ThemeMode.Light -> false
-            ThemeMode.Dark -> true
-            ThemeMode.Auto -> currentNightMode == Configuration.UI_MODE_NIGHT_YES
-        }
+        val currentNightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+        val isDark =
+            when (mainViewModel.prefs.theme) {
+                ThemeMode.Light -> false
+                ThemeMode.Dark -> true
+                ThemeMode.Auto -> currentNightMode == Configuration.UI_MODE_NIGHT_YES
+            }
         insetsController.isAppearanceLightStatusBars = !isDark
 
         setContent {
             val context = LocalContext.current
             val dynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
-            val colorScheme = when {
-                dynamicColor && isDark -> dynamicDarkColorScheme(context)
-                dynamicColor && !isDark -> dynamicLightColorScheme(context)
-                isDark -> darkColorScheme()
-                else -> lightColorScheme()
-            }
+            val colorScheme =
+                when {
+                    dynamicColor && isDark -> dynamicDarkColorScheme(context)
+                    dynamicColor && !isDark -> dynamicLightColorScheme(context)
+                    isDark -> darkColorScheme()
+                    else -> lightColorScheme()
+                }
 
             MaterialTheme(colorScheme = colorScheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = MaterialTheme.colorScheme.background,
                 ) {
                     AppNavHost(mainViewModel)
                 }
@@ -76,12 +80,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onNewIntent(intent: Intent?) {
+    override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent?.let {
-            processShareIntent(intent)
-        }
+        processShareIntent(intent)
     }
 
     override fun onDestroy() {
@@ -92,11 +94,12 @@ class MainActivity : ComponentActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         val currentNightMode = newConfig.uiMode and Configuration.UI_MODE_NIGHT_MASK
-        val isDark = when (mainViewModel.prefs.theme) {
-            ThemeMode.Light -> false
-            ThemeMode.Dark -> true
-            ThemeMode.Auto -> currentNightMode == Configuration.UI_MODE_NIGHT_YES
-        }
+        val isDark =
+            when (mainViewModel.prefs.theme) {
+                ThemeMode.Light -> false
+                ThemeMode.Dark -> true
+                ThemeMode.Auto -> currentNightMode == Configuration.UI_MODE_NIGHT_YES
+            }
         val insetsController = WindowCompat.getInsetsController(window, window.decorView)
         insetsController.isAppearanceLightStatusBars = !isDark
         Log.d(TAG, "MainActivity onConfigurationChanged called.")

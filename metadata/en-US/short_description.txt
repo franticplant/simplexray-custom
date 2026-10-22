@@ -1,1 +1,1 @@
-A simple, fast Xray client
+Xray-core proxy client that runs several cores at once

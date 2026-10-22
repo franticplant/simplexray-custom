@@ -1,0 +1,138 @@
+name: Update Xray-core
+
+# Once a day, checks for a new Xray-core release. When there is one, it bumps
+# version.properties (Xray-core; Go to the newest patch of the release Xray-core
+# asks for; the geo data; the app version), commits that to main with release
+# notes, tags it and starts the Release workflow for the tag.
+#
+# main only accepts signed commits, so the commit is made through the GraphQL
+# API (createCommitOnBranch), which GitHub signs on the bot's behalf, rather
+# than by git push. A tag created with the workflow's own token does not
+# trigger workflows, hence the explicit dispatch of release.yml.
+
+on:
+  schedule:
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Release even if Xray-core is unchanged (refreshes Go and geo data)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: update-xray
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write # commit and tag through the API
+      actions: write # dispatch release.yml
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check for updates
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force || false }}
+        run: |
+          prop() { grep "^$1=" version.properties | cut -d= -f2- | tr -d '\r'; }
+          current=$(prop XRAY_CORE_VERSION)
+          latest=$(gh api repos/XTLS/Xray-core/releases/latest --jq .tag_name)
+          [[ -n $latest ]] || { echo "::error::could not read the latest Xray-core release"; exit 1; }
+          echo "Xray-core: current $current, latest $latest"
+          if [[ $(printf '%s\n%s\n' "${current#v}" "${latest#v}" | sort -V | tail -1) == "${current#v}" && $FORCE != true ]]; then
+            echo "Up to date."
+            echo "update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # The Go minor Xray-core requires, at its newest patch release.
+          go_minor=$(gh api "repos/XTLS/Xray-core/contents/go.mod?ref=$latest" --jq .content | base64 -d |
+            sed -nE 's/^go ([0-9]+\.[0-9]+).*/\1/p')
+          go=$(curl -fsSL 'https://go.dev/dl/?mode=json&include=all' |
+            jq -r --arg m "go$go_minor." '[.[] | select(.stable) | .version | select(startswith($m))][0]')
+          go=${go#go}
+          [[ $go =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::no Go release for $go_minor"; exit 1; }
+
+          geo=$(gh api repos/lhear/v2ray-rules-dat/releases/latest --jq .tag_name)
+
+          code=$(( $(prop APP_VERSION_CODE) + 1 ))
+          name=$(prop APP_VERSION_NAME | awk -F. -v OFS=. '{ $NF++; print }')
+
+          {
+            echo "update=true"
+            echo "xray=$latest"
+            echo "go=$go"
+            echo "geo=$geo"
+            echo "code=$code"
+            echo "name=$name"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Update files
+        if: steps.check.outputs.update == 'true'
+        env:
+          XRAY: ${{ steps.check.outputs.xray }}
+          GO: ${{ steps.check.outputs.go }}
+          GEO: ${{ steps.check.outputs.geo }}
+          CODE: ${{ steps.check.outputs.code }}
+          NAME: ${{ steps.check.outputs.name }}
+        run: |
+          sed -i -E \
+            -e "s/^XRAY_CORE_VERSION=.*/XRAY_CORE_VERSION=$XRAY/" \
+            -e "s/^GO_VERSION=.*/GO_VERSION=$GO/" \
+            -e "s/^GEOIP_VERSION=.*/GEOIP_VERSION=$GEO/" \
+            -e "s/^GEOSITE_VERSION=.*/GEOSITE_VERSION=$GEO/" \
+            -e "s/^APP_VERSION_CODE=.*/APP_VERSION_CODE=$CODE/" \
+            -e "s/^APP_VERSION_NAME=.*/APP_VERSION_NAME=$NAME/" \
+            version.properties
+          mkdir -p docs/release-notes
+          {
+            echo "### Changes"
+            echo "- **Xray-core** updated to [$XRAY](https://github.com/XTLS/Xray-core/releases/tag/$XRAY), built with Go $GO."
+            echo "- **Geo data** updated to [$GEO](https://github.com/lhear/v2ray-rules-dat/releases/tag/$GEO)."
+          } > "docs/release-notes/v$NAME.md"
+
+      - name: Commit and tag
+        if: steps.check.outputs.update == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          XRAY: ${{ steps.check.outputs.xray }}
+          NAME: ${{ steps.check.outputs.name }}
+        run: |
+          notes="docs/release-notes/v$NAME.md"
+          sha=$(gh api graphql \
+            -f query='mutation($input: CreateCommitOnBranchInput!) {
+              createCommitOnBranch(input: $input) { commit { oid } } }' \
+            --input - --jq .data.createCommitOnBranch.commit.oid <<JSON
+          {"variables": {"input": {
+            "branch": {"repositoryNameWithOwner": "$GITHUB_REPOSITORY", "branchName": "main"},
+            "expectedHeadOid": "$(git rev-parse HEAD)",
+            "message": {"headline": "Update Xray-core to $XRAY, release v$NAME"},
+            "fileChanges": {"additions": [
+              {"path": "version.properties", "contents": "$(base64 -w0 version.properties)"},
+              {"path": "$notes", "contents": "$(base64 -w0 "$notes")"}
+            ]}
+          }}}
+          JSON
+          )
+          [[ $sha =~ ^[0-9a-f]{40}$ ]] || { echo "::error::commit failed: $sha"; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/v$NAME" -f sha="$sha" > /dev/null
+          echo "Committed $sha and tagged v$NAME"
+          echo "tag=v$NAME" >> "$GITHUB_ENV"
+
+      - name: Start release
+        if: steps.check.outputs.update == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release.yml --ref main -f tag="$tag"

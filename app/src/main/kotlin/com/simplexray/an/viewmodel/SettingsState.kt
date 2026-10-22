@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.viewmodel
 
 import com.simplexray.an.common.ThemeMode
@@ -5,7 +8,7 @@ import com.simplexray.an.common.ThemeMode
 data class InputFieldState(
     val value: String,
     val error: String? = null,
-    val isValid: Boolean = true
+    val isValid: Boolean = true,
 )
 
 data class SwitchStates(
@@ -14,7 +17,7 @@ data class SwitchStates(
     val httpProxyEnabled: Boolean,
     val bypassLanEnabled: Boolean,
     val disableVpn: Boolean,
-    val themeMode: ThemeMode
+    val themeMode: ThemeMode,
 )
 
 data class InfoStates(
@@ -23,12 +26,12 @@ data class InfoStates(
     val geoipSummary: String,
     val geositeSummary: String,
     val geoipUrl: String,
-    val geositeUrl: String
+    val geositeUrl: String,
 )
 
 data class FileStates(
     val isGeoipCustom: Boolean,
-    val isGeositeCustom: Boolean
+    val isGeositeCustom: Boolean,
 )
 
 data class SettingsState(
@@ -42,5 +45,5 @@ data class SettingsState(
     val info: InfoStates,
     val files: FileStates,
     val connectivityTestTarget: InputFieldState,
-    val connectivityTestTimeout: InputFieldState
-) 
+    val connectivityTestTimeout: InputFieldState,
+)

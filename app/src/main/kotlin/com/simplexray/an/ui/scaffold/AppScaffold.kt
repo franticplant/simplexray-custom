@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.ui.scaffold
 
 import androidx.compose.foundation.layout.WindowInsets
@@ -66,7 +69,7 @@ fun AppScaffold(
     logListState: LazyListState,
     configListState: LazyListState,
     settingsScrollState: androidx.compose.foundation.ScrollState,
-    content: @Composable (paddingValues: androidx.compose.foundation.layout.PaddingValues) -> Unit
+    content: @Composable (paddingValues: androidx.compose.foundation.layout.PaddingValues) -> Unit,
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -103,13 +106,13 @@ fun AppScaffold(
                 logSearchQuery = logSearchQuery,
                 onLogSearchQueryChange = { logViewModel.onSearchQueryChange(it) },
                 focusRequester = focusRequester,
-                mainViewModel = mainViewModel
+                mainViewModel = mainViewModel,
             )
         },
         bottomBar = {
             AppBottomNavigationBar(navController)
         },
-        contentWindowInsets = WindowInsets(0)
+        contentWindowInsets = WindowInsets(0),
     ) { paddingValues ->
         content(paddingValues)
     }
@@ -136,45 +139,54 @@ fun AppTopAppBar(
     logSearchQuery: String = "",
     onLogSearchQueryChange: (String) -> Unit = {},
     focusRequester: FocusRequester = FocusRequester(),
-    mainViewModel: MainViewModel
+    mainViewModel: MainViewModel,
 ) {
-    val title = when (currentRoute) {
-        "stats" -> stringResource(R.string.core_stats_title)
-        "config" -> stringResource(R.string.configuration)
-        "log" -> stringResource(R.string.log)
-        "settings" -> stringResource(R.string.settings)
-        else -> stringResource(R.string.app_name)
-    }
+    val title =
+        when (currentRoute) {
+            "stats" -> stringResource(R.string.core_stats_title)
+            "config" -> stringResource(R.string.configuration)
+            "log" -> stringResource(R.string.log)
+            "settings" -> stringResource(R.string.settings)
+            else -> stringResource(R.string.app_name)
+        }
 
     val defaultTopAppBarColors = TopAppBarDefaults.topAppBarColors()
 
-    val showScrolledColor by remember(
-        currentRoute,
-        logListState,
-        configListState,
-        settingsScrollState
-    ) {
-        derivedStateOf {
-            when (currentRoute) {
-                "log" -> logListState.firstVisibleItemIndex > 0 || logListState.firstVisibleItemScrollOffset > 0
-                "config" -> configListState.firstVisibleItemIndex > 0 || configListState.firstVisibleItemScrollOffset > 0
-                "settings" -> settingsScrollState.value > 0
-                else -> false
+    val showScrolledColor by
+        remember(
+            currentRoute,
+            logListState,
+            configListState,
+            settingsScrollState,
+        ) {
+            derivedStateOf {
+                when (currentRoute) {
+                    "log" ->
+                        logListState.firstVisibleItemIndex > 0 ||
+                            logListState.firstVisibleItemScrollOffset > 0
+                    "config" ->
+                        configListState.firstVisibleItemIndex > 0 ||
+                            configListState.firstVisibleItemScrollOffset > 0
+                    "settings" -> settingsScrollState.value > 0
+                    else -> false
+                }
             }
         }
-    }
 
-    val appBarColors = TopAppBarDefaults.topAppBarColors(
-        containerColor = MaterialTheme.colorScheme.run {
-            if (showScrolledColor) surfaceContainer else surface
-        },
-        scrolledContainerColor = MaterialTheme.colorScheme.run {
-            if (showScrolledColor) surfaceContainer else surface
-        },
-        navigationIconContentColor = defaultTopAppBarColors.navigationIconContentColor,
-        titleContentColor = defaultTopAppBarColors.titleContentColor,
-        actionIconContentColor = defaultTopAppBarColors.actionIconContentColor
-    )
+    val appBarColors =
+        TopAppBarDefaults.topAppBarColors(
+            containerColor =
+                MaterialTheme.colorScheme.run {
+                    if (showScrolledColor) surfaceContainer else surface
+                },
+            scrolledContainerColor =
+                MaterialTheme.colorScheme.run {
+                    if (showScrolledColor) surfaceContainer else surface
+                },
+            navigationIconContentColor = defaultTopAppBarColors.navigationIconContentColor,
+            titleContentColor = defaultTopAppBarColors.titleContentColor,
+            actionIconContentColor = defaultTopAppBarColors.actionIconContentColor,
+        )
 
     TopAppBar(
         title = {
@@ -182,19 +194,18 @@ fun AppTopAppBar(
                 TextField(
                     value = logSearchQuery,
                     onValueChange = onLogSearchQueryChange,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(focusRequester),
+                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
                     placeholder = { Text(stringResource(R.string.search)) },
                     singleLine = true,
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        disabledIndicatorColor = Color.Transparent
-                    )
+                    colors =
+                        TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent,
+                        ),
                 )
             } else {
                 Text(text = title)
@@ -202,13 +213,15 @@ fun AppTopAppBar(
         },
         navigationIcon = {
             if (currentRoute == "log" && isLogSearching) {
-                IconButton(onClick = {
-                    onLogSearchingChange(false)
-                    onLogSearchQueryChange("")
-                }) {
+                IconButton(
+                    onClick = {
+                        onLogSearchingChange(false)
+                        onLogSearchQueryChange("")
+                    }
+                ) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = stringResource(R.string.close_search)
+                        contentDescription = stringResource(R.string.close_search),
                     )
                 }
             }
@@ -219,7 +232,7 @@ fun AppTopAppBar(
                     IconButton(onClick = { onLogSearchQueryChange("") }) {
                         Icon(
                             Icons.Default.Clear,
-                            contentDescription = stringResource(R.string.clear_search)
+                            contentDescription = stringResource(R.string.clear_search),
                         )
                     }
                 }
@@ -236,11 +249,11 @@ fun AppTopAppBar(
                     isServiceEnabled = isServiceEnabled,
                     logViewModel = logViewModel,
                     onLogSearchingChange = onLogSearchingChange,
-                    mainViewModel = mainViewModel
+                    mainViewModel = mainViewModel,
                 )
             }
         },
-        colors = appBarColors
+        colors = appBarColors,
     )
 }
 
@@ -257,35 +270,39 @@ private fun TopAppBarActions(
     isServiceEnabled: Boolean,
     logViewModel: LogViewModel,
     onLogSearchingChange: (Boolean) -> Unit = {},
-    mainViewModel: MainViewModel
+    mainViewModel: MainViewModel,
 ) {
     when (currentRoute) {
-        "config" -> ConfigActions(
-            onCreateNewConfigFileAndEdit = onCreateNewConfigFileAndEdit,
-            onImportConfigFromClipboard = onImportConfigFromClipboard,
-            onSwitchVpnService = onSwitchVpnService,
-            controlMenuClickable = controlMenuClickable,
-            isServiceEnabled = isServiceEnabled,
-            mainViewModel = mainViewModel
-        )
+        "config" ->
+            ConfigActions(
+                onCreateNewConfigFileAndEdit = onCreateNewConfigFileAndEdit,
+                onImportConfigFromClipboard = onImportConfigFromClipboard,
+                onSwitchVpnService = onSwitchVpnService,
+                controlMenuClickable = controlMenuClickable,
+                isServiceEnabled = isServiceEnabled,
+                mainViewModel = mainViewModel,
+            )
 
-        "stats" -> StatsActions(
-            onSwitchVpnService = onSwitchVpnService,
-            controlMenuClickable = controlMenuClickable,
-            isServiceEnabled = isServiceEnabled,
-            mainViewModel = mainViewModel
-        )
+        "stats" ->
+            StatsActions(
+                onSwitchVpnService = onSwitchVpnService,
+                controlMenuClickable = controlMenuClickable,
+                isServiceEnabled = isServiceEnabled,
+                mainViewModel = mainViewModel,
+            )
 
-        "log" -> LogActions(
-            onPerformExport = onPerformExport,
-            logViewModel = logViewModel,
-            onLogSearchingChange = onLogSearchingChange
-        )
+        "log" ->
+            LogActions(
+                onPerformExport = onPerformExport,
+                logViewModel = logViewModel,
+                onLogSearchingChange = onLogSearchingChange,
+            )
 
-        "settings" -> SettingsActions(
-            onPerformBackup = onPerformBackup,
-            onPerformRestore = onPerformRestore
-        )
+        "settings" ->
+            SettingsActions(
+                onPerformBackup = onPerformBackup,
+                onPerformRestore = onPerformRestore,
+            )
     }
 }
 
@@ -296,40 +313,39 @@ private fun ConfigActions(
     onSwitchVpnService: () -> Unit,
     controlMenuClickable: Boolean,
     isServiceEnabled: Boolean,
-    mainViewModel: MainViewModel
+    mainViewModel: MainViewModel,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     IconButton(
         onClick = onSwitchVpnService,
-        enabled = controlMenuClickable
+        enabled = controlMenuClickable,
     ) {
         Icon(
-            painter = painterResource(
-                id = if (isServiceEnabled) R.drawable.pause else R.drawable.play
-            ),
-            contentDescription = null
+            painter =
+                painterResource(id = if (isServiceEnabled) R.drawable.pause else R.drawable.play),
+            contentDescription = null,
         )
     }
 
     IconButton(onClick = { expanded = true }) {
         Icon(
             Icons.Default.MoreVert,
-            contentDescription = stringResource(R.string.more)
+            contentDescription = stringResource(R.string.more),
         )
     }
 
     DropdownMenu(
         expanded = expanded,
-        onDismissRequest = { expanded = false }
+        onDismissRequest = { expanded = false },
     ) {
         DropdownMenuItem(
             text = { Text(stringResource(R.string.new_profile)) },
             onClick = {
                 onCreateNewConfigFileAndEdit()
                 expanded = false
-            }
+            },
         )
         DropdownMenuItem(
             text = { Text(stringResource(R.string.import_from_clipboard)) },
@@ -339,7 +355,7 @@ private fun ConfigActions(
                     delay(100)
                     onImportConfigFromClipboard()
                 }
-            }
+            },
         )
         DropdownMenuItem(
             text = { Text(stringResource(R.string.connectivity_test)) },
@@ -347,7 +363,7 @@ private fun ConfigActions(
                 mainViewModel.testConnectivity()
                 expanded = false
             },
-            enabled = isServiceEnabled
+            enabled = isServiceEnabled,
         )
     }
 }
@@ -356,7 +372,7 @@ private fun ConfigActions(
 private fun LogActions(
     onPerformExport: () -> Unit,
     logViewModel: LogViewModel,
-    onLogSearchingChange: (Boolean) -> Unit = {}
+    onLogSearchingChange: (Boolean) -> Unit = {},
 ) {
     var expanded by remember { mutableStateOf(false) }
     val hasLogsToExport by logViewModel.hasLogsToExport.collectAsStateWithLifecycle()
@@ -364,18 +380,18 @@ private fun LogActions(
     IconButton(onClick = { onLogSearchingChange(true) }) {
         Icon(
             painterResource(id = R.drawable.search),
-            contentDescription = stringResource(R.string.search)
+            contentDescription = stringResource(R.string.search),
         )
     }
     IconButton(onClick = { expanded = true }) {
         Icon(
             Icons.Default.MoreVert,
-            contentDescription = stringResource(R.string.more)
+            contentDescription = stringResource(R.string.more),
         )
     }
     DropdownMenu(
         expanded = expanded,
-        onDismissRequest = { expanded = false }
+        onDismissRequest = { expanded = false },
     ) {
         DropdownMenuItem(
             text = { Text(stringResource(R.string.export)) },
@@ -383,7 +399,7 @@ private fun LogActions(
                 onPerformExport()
                 expanded = false
             },
-            enabled = hasLogsToExport
+            enabled = hasLogsToExport,
         )
     }
 }
@@ -391,34 +407,34 @@ private fun LogActions(
 @Composable
 private fun SettingsActions(
     onPerformBackup: () -> Unit,
-    onPerformRestore: () -> Unit
+    onPerformRestore: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
 
     IconButton(onClick = { expanded = true }) {
         Icon(
             Icons.Default.MoreVert,
-            contentDescription = stringResource(R.string.more)
+            contentDescription = stringResource(R.string.more),
         )
     }
 
     DropdownMenu(
         expanded = expanded,
-        onDismissRequest = { expanded = false }
+        onDismissRequest = { expanded = false },
     ) {
         DropdownMenuItem(
             text = { Text(stringResource(R.string.backup)) },
             onClick = {
                 onPerformBackup()
                 expanded = false
-            }
+            },
         )
         DropdownMenuItem(
             text = { Text(stringResource(R.string.restore)) },
             onClick = {
                 onPerformRestore()
                 expanded = false
-            }
+            },
         )
     }
 }
@@ -428,32 +444,31 @@ private fun StatsActions(
     onSwitchVpnService: () -> Unit,
     controlMenuClickable: Boolean,
     isServiceEnabled: Boolean,
-    mainViewModel: MainViewModel
+    mainViewModel: MainViewModel,
 ) {
     var expanded by remember { mutableStateOf(false) }
 
     IconButton(
         onClick = onSwitchVpnService,
-        enabled = controlMenuClickable
+        enabled = controlMenuClickable,
     ) {
         Icon(
-            painter = painterResource(
-                id = if (isServiceEnabled) R.drawable.pause else R.drawable.play
-            ),
-            contentDescription = null
+            painter =
+                painterResource(id = if (isServiceEnabled) R.drawable.pause else R.drawable.play),
+            contentDescription = null,
         )
     }
 
     IconButton(onClick = { expanded = true }) {
         Icon(
             Icons.Default.MoreVert,
-            contentDescription = stringResource(R.string.more)
+            contentDescription = stringResource(R.string.more),
         )
     }
 
     DropdownMenu(
         expanded = expanded,
-        onDismissRequest = { expanded = false }
+        onDismissRequest = { expanded = false },
     ) {
         DropdownMenuItem(
             text = { Text(stringResource(R.string.connectivity_test)) },
@@ -461,7 +476,7 @@ private fun StatsActions(
                 mainViewModel.testConnectivity()
                 expanded = false
             },
-            enabled = isServiceEnabled
+            enabled = isServiceEnabled,
         )
     }
 }
@@ -479,10 +494,10 @@ fun AppBottomNavigationBar(navController: NavHostController) {
             icon = {
                 Icon(
                     painter = painterResource(id = R.drawable.dashboard),
-                    contentDescription = stringResource(R.string.core_stats_title)
+                    contentDescription = stringResource(R.string.core_stats_title),
                 )
             },
-            label = { Text(stringResource(R.string.core_stats_title)) }
+            label = { Text(stringResource(R.string.core_stats_title)) },
         )
         NavigationBarItem(
             alwaysShowLabel = false,
@@ -491,10 +506,10 @@ fun AppBottomNavigationBar(navController: NavHostController) {
             icon = {
                 Icon(
                     painter = painterResource(id = R.drawable.code),
-                    contentDescription = stringResource(R.string.configuration)
+                    contentDescription = stringResource(R.string.configuration),
                 )
             },
-            label = { Text(stringResource(R.string.configuration)) }
+            label = { Text(stringResource(R.string.configuration)) },
         )
         NavigationBarItem(
             alwaysShowLabel = false,
@@ -503,10 +518,10 @@ fun AppBottomNavigationBar(navController: NavHostController) {
             icon = {
                 Icon(
                     painter = painterResource(id = R.drawable.history),
-                    contentDescription = stringResource(R.string.log)
+                    contentDescription = stringResource(R.string.log),
                 )
             },
-            label = { Text(stringResource(R.string.log)) }
+            label = { Text(stringResource(R.string.log)) },
         )
         NavigationBarItem(
             alwaysShowLabel = false,
@@ -515,10 +530,10 @@ fun AppBottomNavigationBar(navController: NavHostController) {
             icon = {
                 Icon(
                     painter = painterResource(id = R.drawable.settings),
-                    contentDescription = stringResource(R.string.settings)
+                    contentDescription = stringResource(R.string.settings),
                 )
             },
-            label = { Text(stringResource(R.string.settings)) }
+            label = { Text(stringResource(R.string.settings)) },
         )
     }
 }

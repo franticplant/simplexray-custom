@@ -1,0 +1,5 @@
+- New app ID: installs alongside the original SimpleXray. Export configs from the old app and import them here.
+- Multiple instances: the dashboard shows running instances and their stats; instances can be stopped from the config list.
+- Updated toolchain, libraries, hev-socks5-tunnel 2.19.1 and geo data; Go 1.26.10.
+- Fixed: configs without a "log" section were rejected.
+- Security: other apps can no longer send the app's internal broadcasts on Android 10–12.

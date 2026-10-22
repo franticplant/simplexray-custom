@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
 # ==============================================================================
 # SimpleXray Secret Scanner (Pre-commit Hook)
 # Scans staged files in git for private keys, tokens, and hardcoded secrets.

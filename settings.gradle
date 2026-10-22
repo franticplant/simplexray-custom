@@ -1,1 +1,23 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
+    repositories {
+        google()
+        mavenCentral()
+        // LazyColumnScrollbar is only published to JitPack.
+        maven {
+            url = 'https://jitpack.io'
+            content { includeGroupByRegex 'com\\.github\\.nanihadesuka.*' }
+        }
+    }
+}
+
+rootProject.name = 'SimpleXray'
 include ':app'

@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.viewmodel
 
 import android.app.Application
@@ -11,6 +14,12 @@ import com.simplexray.an.common.ConfigUtils
 import com.simplexray.an.common.FilenameValidator
 import com.simplexray.an.data.source.FileManager
 import com.simplexray.an.prefs.Preferences
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.IOException
+import java.net.URLEncoder
+import java.util.Base64
+import java.util.zip.Deflater
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,27 +29,22 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONException
-import java.io.ByteArrayOutputStream
-import java.io.File
-import java.io.IOException
-import java.net.URLEncoder
-import java.util.Base64
-import java.util.zip.Deflater
 
 private const val TAG = "ConfigEditViewModel"
 
 sealed class ConfigEditUiEvent {
     data class ShowSnackbar(val message: String) : ConfigEditUiEvent()
+
     data class ShareContent(val content: String) : ConfigEditUiEvent()
+
     data object NavigateBack : ConfigEditUiEvent()
 }
 
 class ConfigEditViewModel(
     application: Application,
     private val initialFilePath: String,
-    prefs: Preferences
-) :
-    AndroidViewModel(application) {
+    prefs: Preferences,
+) : AndroidViewModel(application) {
 
     private var _configFile: File
     private var _originalFilePath: String = initialFilePath
@@ -83,18 +87,19 @@ class ConfigEditViewModel(
             return name
         }
 
-    private suspend fun readConfigFileContent(): String = withContext(Dispatchers.IO) {
-        if (!_configFile.exists()) {
-            Log.e(TAG, "Config not found at path: $initialFilePath")
-            return@withContext ""
+    private suspend fun readConfigFileContent(): String =
+        withContext(Dispatchers.IO) {
+            if (!_configFile.exists()) {
+                Log.e(TAG, "Config not found at path: $initialFilePath")
+                return@withContext ""
+            }
+            try {
+                _configFile.readText()
+            } catch (e: IOException) {
+                Log.e(TAG, "Error reading config file", e)
+                ""
+            }
         }
-        try {
-            _configFile.readText()
-        } catch (e: IOException) {
-            Log.e(TAG, "Error reading config file", e)
-            ""
-        }
-    }
 
     fun onConfigContentChange(newValue: TextFieldValue) {
         _configTextFieldValue.value = newValue
@@ -115,7 +120,7 @@ class ConfigEditViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             val oldFilePath = _configFile.absolutePath
 
-            var newFilename = _filename.value.trim { it <= ' ' }
+            var newFilename = _filename.value.trim()
 
             val validationError = validateFilename(newFilename)
             if (validationError != null) {
@@ -145,8 +150,7 @@ class ConfigEditViewModel(
 
             val formattedContent: String
             try {
-                formattedContent =
-                    ConfigUtils.formatConfigContent(_configTextFieldValue.value.text)
+                formattedContent = ConfigUtils.formatConfigContent(_configTextFieldValue.value.text)
             } catch (e: JSONException) {
                 Log.e(TAG, "Invalid JSON format", e)
                 _uiEvent.trySend(
@@ -176,9 +180,7 @@ class ConfigEditViewModel(
                 _hasConfigChanged.value = false
             } else {
                 _uiEvent.trySend(
-                    ConfigEditUiEvent.ShowSnackbar(
-                        application.getString(R.string.save_fail)
-                    )
+                    ConfigEditUiEvent.ShowSnackbar(application.getString(R.string.save_fail))
                 )
             }
         }
@@ -189,9 +191,7 @@ class ConfigEditViewModel(
             if (!_configFile.exists()) {
                 Log.e(TAG, "Config file not found.")
                 _uiEvent.trySend(
-                    ConfigEditUiEvent.ShowSnackbar(
-                        application.getString(R.string.config_not_found)
-                    )
+                    ConfigEditUiEvent.ShowSnackbar(application.getString(R.string.config_not_found))
                 )
                 return@launch
             }
@@ -218,24 +218,29 @@ class ConfigEditViewModel(
     }
 
     fun handleAutoIndent(text: String, newlinePosition: Int): Pair<String, Int> {
-        val prevLineStart = text.lastIndexOf('\n', newlinePosition - 1).let {
-            if (it == -1) 0 else it + 1
-        }
+        val prevLineStart =
+            text.lastIndexOf('\n', newlinePosition - 1).let {
+                if (it == -1) 0 else it + 1
+            }
         val prevLine = text.substring(prevLineStart, newlinePosition)
         val leadingSpaces = prevLine.takeWhile { it.isWhitespace() }.length
-        val additionalIndent = if (prevLine.trimEnd().let {
-                it.endsWith('{') || it.endsWith('[')
-            }) 2 else 0
+        val additionalIndent =
+            if (
+                prevLine.trimEnd().let {
+                    it.endsWith('{') || it.endsWith('[')
+                }
+            )
+                2
+            else 0
         val shouldDedent = run {
             val nextLineStart = newlinePosition + 1
             nextLineStart < text.length &&
-                    text.substring(nextLineStart).substringBefore('\n').trimStart().let {
-                        it.startsWith('}') || it.startsWith(']')
-                    }
+                text.substring(nextLineStart).substringBefore('\n').trimStart().let {
+                    it.startsWith('}') || it.startsWith(']')
+                }
         }
-        val finalIndent = (
-                leadingSpaces + additionalIndent - if (shouldDedent) 2 else 0
-                ).coerceAtLeast(0)
+        val finalIndent =
+            (leadingSpaces + additionalIndent - if (shouldDedent) 2 else 0).coerceAtLeast(0)
         val indent = " ".repeat(finalIndent)
         val indentedText = StringBuilder(text).insert(newlinePosition + 1, indent).toString()
         return indentedText to (newlinePosition + 1 + finalIndent)

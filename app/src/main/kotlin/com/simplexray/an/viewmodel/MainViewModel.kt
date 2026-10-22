@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.viewmodel
 
 import android.app.ActivityManager
@@ -9,9 +12,10 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.net.VpnService
-import android.os.Build
 import android.util.Log
 import androidx.activity.result.ActivityResultLauncher
+import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -23,11 +27,23 @@ import com.simplexray.an.common.CoreStatsClient
 import com.simplexray.an.common.ROUTE_APP_LIST
 import com.simplexray.an.common.ROUTE_CONFIG_EDIT
 import com.simplexray.an.common.ThemeMode
+import com.simplexray.an.core.InstanceRegistry
+import com.simplexray.an.core.InstanceStatus
 import com.simplexray.an.core.XrayInstanceInfo
-import com.simplexray.an.core.XrayInstanceManager
 import com.simplexray.an.data.source.FileManager
 import com.simplexray.an.prefs.Preferences
 import com.simplexray.an.service.TProxyService
+import java.io.BufferedReader
+import java.io.File
+import java.io.IOException
+import java.io.InputStreamReader
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.net.Socket
+import java.net.URL
+import java.util.regex.Pattern
+import javax.net.ssl.SSLSocketFactory
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -46,35 +62,29 @@ import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
-import java.io.BufferedReader
-import java.io.File
-import java.io.IOException
-import java.io.InputStreamReader
-import java.net.InetSocketAddress
-import java.net.Proxy
-import java.net.Socket
-import java.net.URL
-import java.util.regex.Pattern
-import javax.net.ssl.SSLSocketFactory
-import kotlin.coroutines.cancellation.CancellationException
 
 private const val TAG = "MainViewModel"
 
 sealed class MainViewUiEvent {
     data class ShowSnackbar(val message: String) : MainViewUiEvent()
+
     data class ShareLauncher(val intent: Intent) : MainViewUiEvent()
+
     data class StartService(val intent: Intent) : MainViewUiEvent()
+
     data object RefreshConfigList : MainViewUiEvent()
+
     data class Navigate(val route: String) : MainViewUiEvent()
 }
 
-class MainViewModel(application: Application) :
-    AndroidViewModel(application) {
+class MainViewModel(application: Application) : AndroidViewModel(application) {
     val prefs: Preferences = Preferences(application)
     private val activityScope: CoroutineScope = viewModelScope
     private var compressedBackupData: ByteArray? = null
 
-    private var coreStatsClient: CoreStatsClient? = null
+    // One stats client per running instance, keyed by "address:port"; guarded by statsLock.
+    private val statsClients = mutableMapOf<String, CoreStatsClient>()
+    private val statsLock = Any()
 
     private val fileManager: FileManager = FileManager(application, prefs)
 
@@ -83,38 +93,42 @@ class MainViewModel(application: Application) :
     lateinit var appListViewModel: AppListViewModel
     lateinit var configEditViewModel: ConfigEditViewModel
 
-    private val _settingsState = MutableStateFlow(
-        SettingsState(
-            socksAddress = InputFieldState(prefs.socksAddress),
-            socksPort = InputFieldState(prefs.socksPort.toString()),
-            socksUser = InputFieldState(prefs.socksUsername),
-            socksPass = InputFieldState(prefs.socksPassword),
-            dnsIpv4 = InputFieldState(prefs.dnsIpv4),
-            dnsIpv6 = InputFieldState(prefs.dnsIpv6),
-            switches = SwitchStates(
-                ipv6Enabled = prefs.ipv6,
-                useTemplateEnabled = prefs.useTemplate,
-                httpProxyEnabled = prefs.httpProxyEnabled,
-                bypassLanEnabled = prefs.bypassLan,
-                disableVpn = prefs.disableVpn,
-                themeMode = prefs.theme
-            ),
-            info = InfoStates(
-                appVersion = BuildConfig.VERSION_NAME,
-                kernelVersion = "N/A",
-                geoipSummary = "",
-                geositeSummary = "",
-                geoipUrl = prefs.geoipUrl,
-                geositeUrl = prefs.geositeUrl
-            ),
-            files = FileStates(
-                isGeoipCustom = prefs.customGeoipImported,
-                isGeositeCustom = prefs.customGeositeImported
-            ),
-            connectivityTestTarget = InputFieldState(prefs.connectivityTestTarget),
-            connectivityTestTimeout = InputFieldState(prefs.connectivityTestTimeout.toString())
+    private val _settingsState =
+        MutableStateFlow(
+            SettingsState(
+                socksAddress = InputFieldState(prefs.socksAddress),
+                socksPort = InputFieldState(prefs.socksPort.toString()),
+                socksUser = InputFieldState(prefs.socksUsername),
+                socksPass = InputFieldState(prefs.socksPassword),
+                dnsIpv4 = InputFieldState(prefs.dnsIpv4),
+                dnsIpv6 = InputFieldState(prefs.dnsIpv6),
+                switches =
+                    SwitchStates(
+                        ipv6Enabled = prefs.ipv6,
+                        useTemplateEnabled = prefs.useTemplate,
+                        httpProxyEnabled = prefs.httpProxyEnabled,
+                        bypassLanEnabled = prefs.bypassLan,
+                        disableVpn = prefs.disableVpn,
+                        themeMode = prefs.theme,
+                    ),
+                info =
+                    InfoStates(
+                        appVersion = BuildConfig.VERSION_NAME,
+                        kernelVersion = "N/A",
+                        geoipSummary = "",
+                        geositeSummary = "",
+                        geoipUrl = prefs.geoipUrl,
+                        geositeUrl = prefs.geositeUrl,
+                    ),
+                files =
+                    FileStates(
+                        isGeoipCustom = prefs.customGeoipImported,
+                        isGeositeCustom = prefs.customGeositeImported,
+                    ),
+                connectivityTestTarget = InputFieldState(prefs.connectivityTestTarget),
+                connectivityTestTimeout = InputFieldState(prefs.connectivityTestTimeout.toString()),
+            )
         )
-    )
     val settingsState: StateFlow<SettingsState> = _settingsState.asStateFlow()
 
     private val _coreStatsState = MutableStateFlow(CoreStatsState())
@@ -152,24 +166,26 @@ class MainViewModel(application: Application) :
     private val _newVersionAvailable = MutableStateFlow<String?>(null)
     val newVersionAvailable: StateFlow<String?> = _newVersionAvailable.asStateFlow()
 
-    private val startReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            Log.d(TAG, "Service started")
-            setServiceEnabled(true)
-            setControlMenuClickable(true)
+    private val startReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                Log.d(TAG, "Service started")
+                setServiceEnabled(true)
+                setControlMenuClickable(true)
+            }
         }
-    }
 
-    private val stopReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            Log.d(TAG, "Service stopped")
-            setServiceEnabled(false)
-            setControlMenuClickable(true)
-            _coreStatsState.value = CoreStatsState()
-            coreStatsClient?.close()
-            coreStatsClient = null
+    private val stopReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                Log.d(TAG, "Service stopped")
+                setServiceEnabled(false)
+                setControlMenuClickable(true)
+                _coreStatsState.value = CoreStatsState()
+                _activeInstances.value = emptyList()
+                closeStatsClients()
+            }
         }
-    }
 
     init {
         Log.d(TAG, "MainViewModel initialized.")
@@ -186,35 +202,39 @@ class MainViewModel(application: Application) :
     }
 
     private fun updateSettingsState() {
-        _settingsState.value = _settingsState.value.copy(
-            socksAddress = InputFieldState(prefs.socksAddress),
-            socksPort = InputFieldState(prefs.socksPort.toString()),
-            socksUser = InputFieldState(prefs.socksUsername),
-            socksPass = InputFieldState(prefs.socksPassword),
-            dnsIpv4 = InputFieldState(prefs.dnsIpv4),
-            dnsIpv6 = InputFieldState(prefs.dnsIpv6),
-            switches = SwitchStates(
-                ipv6Enabled = prefs.ipv6,
-                useTemplateEnabled = prefs.useTemplate,
-                httpProxyEnabled = prefs.httpProxyEnabled,
-                bypassLanEnabled = prefs.bypassLan,
-                disableVpn = prefs.disableVpn,
-                themeMode = prefs.theme
-            ),
-            info = _settingsState.value.info.copy(
-                appVersion = BuildConfig.VERSION_NAME,
-                geoipSummary = fileManager.getRuleFileSummary("geoip.dat"),
-                geositeSummary = fileManager.getRuleFileSummary("geosite.dat"),
-                geoipUrl = prefs.geoipUrl,
-                geositeUrl = prefs.geositeUrl
-            ),
-            files = FileStates(
-                isGeoipCustom = prefs.customGeoipImported,
-                isGeositeCustom = prefs.customGeositeImported
-            ),
-            connectivityTestTarget = InputFieldState(prefs.connectivityTestTarget),
-            connectivityTestTimeout = InputFieldState(prefs.connectivityTestTimeout.toString())
-        )
+        _settingsState.value =
+            _settingsState.value.copy(
+                socksAddress = InputFieldState(prefs.socksAddress),
+                socksPort = InputFieldState(prefs.socksPort.toString()),
+                socksUser = InputFieldState(prefs.socksUsername),
+                socksPass = InputFieldState(prefs.socksPassword),
+                dnsIpv4 = InputFieldState(prefs.dnsIpv4),
+                dnsIpv6 = InputFieldState(prefs.dnsIpv6),
+                switches =
+                    SwitchStates(
+                        ipv6Enabled = prefs.ipv6,
+                        useTemplateEnabled = prefs.useTemplate,
+                        httpProxyEnabled = prefs.httpProxyEnabled,
+                        bypassLanEnabled = prefs.bypassLan,
+                        disableVpn = prefs.disableVpn,
+                        themeMode = prefs.theme,
+                    ),
+                info =
+                    _settingsState.value.info.copy(
+                        appVersion = BuildConfig.VERSION_NAME,
+                        geoipSummary = fileManager.getRuleFileSummary("geoip.dat"),
+                        geositeSummary = fileManager.getRuleFileSummary("geosite.dat"),
+                        geoipUrl = prefs.geoipUrl,
+                        geositeUrl = prefs.geositeUrl,
+                    ),
+                files =
+                    FileStates(
+                        isGeoipCustom = prefs.customGeoipImported,
+                        isGeositeCustom = prefs.customGeositeImported,
+                    ),
+                connectivityTestTarget = InputFieldState(prefs.connectivityTestTarget),
+                connectivityTestTimeout = InputFieldState(prefs.connectivityTestTimeout.toString()),
+            )
     }
 
     private fun loadKernelVersion() {
@@ -225,34 +245,34 @@ class MainViewModel(application: Application) :
             val reader = BufferedReader(InputStreamReader(process.inputStream))
             val firstLine = reader.readLine()
             process.destroy()
-            _settingsState.value = _settingsState.value.copy(
-                info = _settingsState.value.info.copy(
-                    kernelVersion = firstLine ?: "N/A"
+            _settingsState.value =
+                _settingsState.value.copy(
+                    info = _settingsState.value.info.copy(kernelVersion = firstLine ?: "N/A")
                 )
-            )
         } catch (e: IOException) {
             Log.e(TAG, "Failed to get xray version", e)
-            _settingsState.value = _settingsState.value.copy(
-                info = _settingsState.value.info.copy(
-                    kernelVersion = "N/A"
+            _settingsState.value =
+                _settingsState.value.copy(
+                    info = _settingsState.value.info.copy(kernelVersion = "N/A")
                 )
-            )
         }
     }
 
     private fun setupGlobalSocksAuthenticator() {
-        java.net.Authenticator.setDefault(object : java.net.Authenticator() {
-            override fun getPasswordAuthentication(): java.net.PasswordAuthentication? {
-                val user = prefs.socksUsername
-                val pass = prefs.socksPassword
+        java.net.Authenticator.setDefault(
+            object : java.net.Authenticator() {
+                override fun getPasswordAuthentication(): java.net.PasswordAuthentication? {
+                    val user = prefs.socksUsername
+                    val pass = prefs.socksPassword
 
-                return if (user.isNotEmpty() || pass.isNotEmpty()) {
-                    java.net.PasswordAuthentication(user, pass.toCharArray())
-                } else {
-                    null
+                    return if (user.isNotEmpty() || pass.isNotEmpty()) {
+                        java.net.PasswordAuthentication(user, pass.toCharArray())
+                    } else {
+                        null
+                    }
                 }
             }
-        })
+        )
     }
 
     fun setControlMenuClickable(isClickable: Boolean) {
@@ -288,18 +308,30 @@ class MainViewModel(application: Application) :
                         if (os != null) {
                             os.write(dataToWrite)
                             Log.d(TAG, "Backup successful to: $uri")
-                            _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.backup_success)))
+                            _uiEvent.trySend(
+                                MainViewUiEvent.ShowSnackbar(
+                                    application.getString(R.string.backup_success)
+                                )
+                            )
                         } else {
                             Log.e(TAG, "Failed to open output stream for backup URI: $uri")
-                            _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.backup_failed)))
+                            _uiEvent.trySend(
+                                MainViewUiEvent.ShowSnackbar(
+                                    application.getString(R.string.backup_failed)
+                                )
+                            )
                         }
                     }
                 } catch (e: IOException) {
                     Log.e(TAG, "Error writing backup data to URI: $uri", e)
-                    _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.backup_failed)))
+                    _uiEvent.trySend(
+                        MainViewUiEvent.ShowSnackbar(application.getString(R.string.backup_failed))
+                    )
                 }
             } else {
-                _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.backup_failed)))
+                _uiEvent.trySend(
+                    MainViewUiEvent.ShowSnackbar(application.getString(R.string.backup_failed))
+                )
                 Log.e(TAG, "Compressed backup data is null in launcher callback.")
             }
         }
@@ -310,11 +342,15 @@ class MainViewModel(application: Application) :
             val success = fileManager.decompressAndRestore(uri)
             if (success) {
                 updateSettingsState()
-                _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.restore_success)))
+                _uiEvent.trySend(
+                    MainViewUiEvent.ShowSnackbar(application.getString(R.string.restore_success))
+                )
                 Log.d(TAG, "Restore successful.")
                 refreshConfigFileList()
             } else {
-                _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.restore_failed)))
+                _uiEvent.trySend(
+                    MainViewUiEvent.ShowSnackbar(application.getString(R.string.restore_failed))
+                )
             }
         }
     }
@@ -322,58 +358,95 @@ class MainViewModel(application: Application) :
     suspend fun createConfigFile(): String? {
         val filePath = fileManager.createConfigFile(application.assets)
         if (filePath == null) {
-            _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.create_config_failed)))
+            _uiEvent.trySend(
+                MainViewUiEvent.ShowSnackbar(application.getString(R.string.create_config_failed))
+            )
         } else {
             refreshConfigFileList()
         }
         return filePath
     }
 
-    suspend fun updateCoreStats() {
-        if (!_isServiceEnabled.value) return
-        
-        // Update stats for all managed Xray instances
-        XrayInstanceManager.updateAllStats()
-        _activeInstances.value = XrayInstanceManager.getAllInstanceInfos()
-
-        if (coreStatsClient == null)
-            coreStatsClient = CoreStatsClient.create(prefs.apiAddress, prefs.apiPort)
-
-        val stats = coreStatsClient?.getSystemStats()
-        val traffic = coreStatsClient?.getTraffic()
-
-        if (stats == null && traffic == null) {
-            coreStatsClient?.close()
-            coreStatsClient = null
-            return
+    private fun statsClientFor(info: XrayInstanceInfo): CoreStatsClient =
+        synchronized(statsLock) {
+            statsClients.getOrPut("${info.apiAddress}:${info.apiPort}") {
+                CoreStatsClient.create(info.apiAddress, info.apiPort)
+            }
         }
 
-        _coreStatsState.value = CoreStatsState(
-            uplink = traffic?.uplink ?: 0,
-            downlink = traffic?.downlink ?: 0,
-            numGoroutine = stats?.numGoroutine ?: 0,
-            numGC = stats?.numGC ?: 0,
-            alloc = stats?.alloc ?: 0,
-            totalAlloc = stats?.totalAlloc ?: 0,
-            sys = stats?.sys ?: 0,
-            mallocs = stats?.mallocs ?: 0,
-            frees = stats?.frees ?: 0,
-            liveObjects = stats?.liveObjects ?: 0,
-            pauseTotalNs = stats?.pauseTotalNs ?: 0,
-            uptime = stats?.uptime ?: 0
-        )
+    private fun closeStatsClients(keep: Set<String> = emptySet()) {
+        val stale =
+            synchronized(statsLock) {
+                val keys = statsClients.keys - keep
+                keys.mapNotNull { statsClients.remove(it) }
+            }
+        stale.forEach { it.close() }
+    }
+
+    /**
+     * Reads the instances the service process is running from InstanceRegistry and fetches each
+     * running one's traffic and runtime stats over its gRPC API.
+     */
+    private suspend fun refreshInstances(): List<XrayInstanceInfo> {
+        val registered =
+            if (_isServiceEnabled.value) InstanceRegistry.read(application) else emptyList()
+        val running = registered.filter { it.status == InstanceStatus.RUNNING }
+        closeStatsClients(keep = running.map { "${it.apiAddress}:${it.apiPort}" }.toSet())
+
+        val infos = registered.map { info ->
+            if (info.status != InstanceStatus.RUNNING) return@map info
+            val client = statsClientFor(info)
+            val stats = client.getSystemStats()
+            val traffic = client.getTraffic()
+            info.copy(
+                uplink = traffic?.uplink ?: 0,
+                downlink = traffic?.downlink ?: 0,
+                numGoroutine = stats?.numGoroutine ?: 0,
+                alloc = stats?.alloc ?: 0,
+                uptime = stats?.uptime ?: 0,
+            )
+        }
+        _activeInstances.value = infos
+        return infos
+    }
+
+    suspend fun updateCoreStats() {
+        if (!_isServiceEnabled.value) return
+
+        val running = refreshInstances().filter { it.status == InstanceStatus.RUNNING }
+        // The global card follows the instance carrying the VPN; traffic is summed over all.
+        val primary = running.firstOrNull { it.isPrimaryVpn } ?: running.firstOrNull() ?: return
+        val client = statsClientFor(primary)
+        val stats = client.getSystemStats() ?: return
+
+        _coreStatsState.value =
+            CoreStatsState(
+                uplink = running.sumOf { it.uplink },
+                downlink = running.sumOf { it.downlink },
+                numGoroutine = stats.numGoroutine,
+                numGC = stats.numGC,
+                alloc = stats.alloc,
+                totalAlloc = stats.totalAlloc,
+                sys = stats.sys,
+                mallocs = stats.mallocs,
+                frees = stats.frees,
+                liveObjects = stats.liveObjects,
+                pauseTotalNs = stats.pauseTotalNs,
+                uptime = stats.uptime,
+            )
         Log.d(TAG, "Core stats updated")
     }
 
     fun refreshActiveInstances() {
-        viewModelScope.launch(Dispatchers.IO) {
-            _activeInstances.value = XrayInstanceManager.getAllInstanceInfos()
-        }
+        viewModelScope.launch(Dispatchers.IO) { refreshInstances() }
     }
 
     fun toggleInstance(configPath: String) {
         viewModelScope.launch {
-            val isRunning = XrayInstanceManager.isInstanceRunning(configPath)
+            val isRunning =
+                _activeInstances.value.any {
+                    it.configPath == configPath && it.status == InstanceStatus.RUNNING
+                }
             if (isRunning) {
                 stopInstanceConfig(configPath)
             } else {
@@ -386,9 +459,10 @@ class MainViewModel(application: Application) :
         viewModelScope.launch {
             prefs.setConfigActive(configPath, true)
             if (_isServiceEnabled.value) {
-                val intent = Intent(application, TProxyService::class.java)
-                    .setAction(TProxyService.ACTION_START_INSTANCE)
-                    .putExtra(TProxyService.EXTRA_CONFIG_PATH, configPath)
+                val intent =
+                    Intent(application, TProxyService::class.java)
+                        .setAction(TProxyService.ACTION_START_INSTANCE)
+                        .putExtra(TProxyService.EXTRA_CONFIG_PATH, configPath)
                 _uiEvent.trySend(MainViewUiEvent.StartService(intent))
             } else {
                 updateSelectedConfigFile(File(configPath))
@@ -401,9 +475,10 @@ class MainViewModel(application: Application) :
     fun stopInstanceConfig(configPath: String) {
         viewModelScope.launch {
             prefs.setConfigActive(configPath, false)
-            val intent = Intent(application, TProxyService::class.java)
-                .setAction(TProxyService.ACTION_STOP_INSTANCE)
-                .putExtra(TProxyService.EXTRA_CONFIG_PATH, configPath)
+            val intent =
+                Intent(application, TProxyService::class.java)
+                    .setAction(TProxyService.ACTION_STOP_INSTANCE)
+                    .putExtra(TProxyService.EXTRA_CONFIG_PATH, configPath)
             _uiEvent.trySend(MainViewUiEvent.StartService(intent))
             refreshActiveInstances()
         }
@@ -412,7 +487,9 @@ class MainViewModel(application: Application) :
     suspend fun importConfigFromClipboard(): String? {
         val filePath = fileManager.importConfigFromClipboard()
         if (filePath == null) {
-            _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.import_failed)))
+            _uiEvent.trySend(
+                MainViewUiEvent.ShowSnackbar(application.getString(R.string.import_failed))
+            )
         } else {
             refreshConfigFileList()
         }
@@ -422,20 +499,30 @@ class MainViewModel(application: Application) :
     suspend fun handleSharedContent(content: String) {
         viewModelScope.launch(Dispatchers.IO) {
             if (!fileManager.importConfigFromContent(content).isNullOrEmpty()) {
-                _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.import_success)))
+                _uiEvent.trySend(
+                    MainViewUiEvent.ShowSnackbar(application.getString(R.string.import_success))
+                )
                 refreshConfigFileList()
             } else {
-                _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.invalid_config_format)))
+                _uiEvent.trySend(
+                    MainViewUiEvent.ShowSnackbar(
+                        application.getString(R.string.invalid_config_format)
+                    )
+                )
             }
         }
     }
 
     suspend fun deleteConfigFile(file: File, callback: () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
-            if (_isServiceEnabled.value && _selectedConfigFile.value != null &&
-                _selectedConfigFile.value == file
+            if (
+                _isServiceEnabled.value &&
+                    _selectedConfigFile.value != null &&
+                    _selectedConfigFile.value == file
             ) {
-                _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.config_in_use)))
+                _uiEvent.trySend(
+                    MainViewUiEvent.ShowSnackbar(application.getString(R.string.config_in_use))
+                )
                 Log.w(TAG, "Attempted to delete selected config file: ${file.name}")
                 return@launch
             }
@@ -446,7 +533,9 @@ class MainViewModel(application: Application) :
                     refreshConfigFileList()
                 }
             } else {
-                _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.delete_fail)))
+                _uiEvent.trySend(
+                    MainViewUiEvent.ShowSnackbar(application.getString(R.string.delete_fail))
+                )
             }
             callback()
         }
@@ -461,24 +550,24 @@ class MainViewModel(application: Application) :
         val matcherIpv6 = IPV6_PATTERN.matcher(addressString)
         return if (matcherIpv4.matches()) {
             prefs.socksAddress = addressString
-            _settingsState.value = _settingsState.value.copy(
-                socksAddress = InputFieldState(addressString)
-            )
+            _settingsState.value =
+                _settingsState.value.copy(socksAddress = InputFieldState(addressString))
             true
         } else if (matcherIpv6.matches()) {
             prefs.socksAddress = addressString
-            _settingsState.value = _settingsState.value.copy(
-                socksAddress = InputFieldState(addressString)
-            )
+            _settingsState.value =
+                _settingsState.value.copy(socksAddress = InputFieldState(addressString))
             true
         } else {
-            _settingsState.value = _settingsState.value.copy(
-                socksAddress = InputFieldState(
-                    value = addressString,
-                    error = application.getString(R.string.invalid_ipv4_or_ipv6),
-                    isValid = false
+            _settingsState.value =
+                _settingsState.value.copy(
+                    socksAddress =
+                        InputFieldState(
+                            value = addressString,
+                            error = application.getString(R.string.invalid_ipv4_or_ipv6),
+                            isValid = false,
+                        )
                 )
-            )
             false
         }
     }
@@ -488,28 +577,31 @@ class MainViewModel(application: Application) :
             val port = portString.toInt()
             if (port in 1025..65535) {
                 prefs.socksPort = port
-                _settingsState.value = _settingsState.value.copy(
-                    socksPort = InputFieldState(portString)
-                )
+                _settingsState.value =
+                    _settingsState.value.copy(socksPort = InputFieldState(portString))
                 true
             } else {
-                _settingsState.value = _settingsState.value.copy(
-                    socksPort = InputFieldState(
-                        value = portString,
-                        error = application.getString(R.string.invalid_port_range),
-                        isValid = false
+                _settingsState.value =
+                    _settingsState.value.copy(
+                        socksPort =
+                            InputFieldState(
+                                value = portString,
+                                error = application.getString(R.string.invalid_port_range),
+                                isValid = false,
+                            )
                     )
-                )
                 false
             }
         } catch (e: NumberFormatException) {
-            _settingsState.value = _settingsState.value.copy(
-                socksPort = InputFieldState(
-                    value = portString,
-                    error = application.getString(R.string.invalid_port),
-                    isValid = false
+            _settingsState.value =
+                _settingsState.value.copy(
+                    socksPort =
+                        InputFieldState(
+                            value = portString,
+                            error = application.getString(R.string.invalid_port),
+                            isValid = false,
+                        )
                 )
-            )
             false
         }
     }
@@ -518,18 +610,19 @@ class MainViewModel(application: Application) :
         val byteCount = userString.toByteArray(Charsets.UTF_8).size
         return if (byteCount <= 255) {
             prefs.socksUsername = userString
-            _settingsState.value = _settingsState.value.copy(
-                socksUser = InputFieldState(userString)
-            )
+            _settingsState.value =
+                _settingsState.value.copy(socksUser = InputFieldState(userString))
             true
         } else {
-            _settingsState.value = _settingsState.value.copy(
-                socksUser = InputFieldState(
-                    value = userString,
-                    error = "Username length must not exceed 255 bytes",
-                    isValid = false
+            _settingsState.value =
+                _settingsState.value.copy(
+                    socksUser =
+                        InputFieldState(
+                            value = userString,
+                            error = "Username length must not exceed 255 bytes",
+                            isValid = false,
+                        )
                 )
-            )
             false
         }
     }
@@ -538,18 +631,19 @@ class MainViewModel(application: Application) :
         val byteCount = passString.toByteArray(Charsets.UTF_8).size
         return if (byteCount <= 255) {
             prefs.socksPassword = passString
-            _settingsState.value = _settingsState.value.copy(
-                socksPass = InputFieldState(passString)
-            )
+            _settingsState.value =
+                _settingsState.value.copy(socksPass = InputFieldState(passString))
             true
         } else {
-            _settingsState.value = _settingsState.value.copy(
-                socksPass = InputFieldState(
-                    value = passString,
-                    error = "Password length must not exceed 255 bytes",
-                    isValid = false
+            _settingsState.value =
+                _settingsState.value.copy(
+                    socksPass =
+                        InputFieldState(
+                            value = passString,
+                            error = "Password length must not exceed 255 bytes",
+                            isValid = false,
+                        )
                 )
-            )
             false
         }
     }
@@ -558,18 +652,18 @@ class MainViewModel(application: Application) :
         val matcher = IPV4_PATTERN.matcher(ipv4Addr)
         return if (matcher.matches()) {
             prefs.dnsIpv4 = ipv4Addr
-            _settingsState.value = _settingsState.value.copy(
-                dnsIpv4 = InputFieldState(ipv4Addr)
-            )
+            _settingsState.value = _settingsState.value.copy(dnsIpv4 = InputFieldState(ipv4Addr))
             true
         } else {
-            _settingsState.value = _settingsState.value.copy(
-                dnsIpv4 = InputFieldState(
-                    value = ipv4Addr,
-                    error = application.getString(R.string.invalid_ipv4),
-                    isValid = false
+            _settingsState.value =
+                _settingsState.value.copy(
+                    dnsIpv4 =
+                        InputFieldState(
+                            value = ipv4Addr,
+                            error = application.getString(R.string.invalid_ipv4),
+                            isValid = false,
+                        )
                 )
-            )
             false
         }
     }
@@ -578,62 +672,68 @@ class MainViewModel(application: Application) :
         val matcher = IPV6_PATTERN.matcher(ipv6Addr)
         return if (matcher.matches()) {
             prefs.dnsIpv6 = ipv6Addr
-            _settingsState.value = _settingsState.value.copy(
-                dnsIpv6 = InputFieldState(ipv6Addr)
-            )
+            _settingsState.value = _settingsState.value.copy(dnsIpv6 = InputFieldState(ipv6Addr))
             true
         } else {
-            _settingsState.value = _settingsState.value.copy(
-                dnsIpv6 = InputFieldState(
-                    value = ipv6Addr,
-                    error = application.getString(R.string.invalid_ipv6),
-                    isValid = false
+            _settingsState.value =
+                _settingsState.value.copy(
+                    dnsIpv6 =
+                        InputFieldState(
+                            value = ipv6Addr,
+                            error = application.getString(R.string.invalid_ipv6),
+                            isValid = false,
+                        )
                 )
-            )
             false
         }
     }
 
     fun setIpv6Enabled(enabled: Boolean) {
         prefs.ipv6 = enabled
-        _settingsState.value = _settingsState.value.copy(
-            switches = _settingsState.value.switches.copy(ipv6Enabled = enabled)
-        )
+        _settingsState.value =
+            _settingsState.value.copy(
+                switches = _settingsState.value.switches.copy(ipv6Enabled = enabled)
+            )
     }
 
     fun setUseTemplateEnabled(enabled: Boolean) {
         prefs.useTemplate = enabled
-        _settingsState.value = _settingsState.value.copy(
-            switches = _settingsState.value.switches.copy(useTemplateEnabled = enabled)
-        )
+        _settingsState.value =
+            _settingsState.value.copy(
+                switches = _settingsState.value.switches.copy(useTemplateEnabled = enabled)
+            )
     }
 
     fun setHttpProxyEnabled(enabled: Boolean) {
         prefs.httpProxyEnabled = enabled
-        _settingsState.value = _settingsState.value.copy(
-            switches = _settingsState.value.switches.copy(httpProxyEnabled = enabled)
-        )
+        _settingsState.value =
+            _settingsState.value.copy(
+                switches = _settingsState.value.switches.copy(httpProxyEnabled = enabled)
+            )
     }
 
     fun setBypassLanEnabled(enabled: Boolean) {
         prefs.bypassLan = enabled
-        _settingsState.value = _settingsState.value.copy(
-            switches = _settingsState.value.switches.copy(bypassLanEnabled = enabled)
-        )
+        _settingsState.value =
+            _settingsState.value.copy(
+                switches = _settingsState.value.switches.copy(bypassLanEnabled = enabled)
+            )
     }
 
     fun setDisableVpnEnabled(enabled: Boolean) {
         prefs.disableVpn = enabled
-        _settingsState.value = _settingsState.value.copy(
-            switches = _settingsState.value.switches.copy(disableVpn = enabled)
-        )
+        _settingsState.value =
+            _settingsState.value.copy(
+                switches = _settingsState.value.switches.copy(disableVpn = enabled)
+            )
     }
 
     fun setTheme(mode: ThemeMode) {
         prefs.theme = mode
-        _settingsState.value = _settingsState.value.copy(
-            switches = _settingsState.value.switches.copy(themeMode = mode)
-        )
+        _settingsState.value =
+            _settingsState.value.copy(
+                switches = _settingsState.value.switches.copy(themeMode = mode)
+            )
         reloadView?.invoke()
     }
 
@@ -643,25 +743,32 @@ class MainViewModel(application: Application) :
             if (success) {
                 when (fileName) {
                     "geoip.dat" -> {
-                        _settingsState.value = _settingsState.value.copy(
-                            files = _settingsState.value.files.copy(
-                                isGeoipCustom = prefs.customGeoipImported
-                            ),
-                            info = _settingsState.value.info.copy(
-                                geoipSummary = fileManager.getRuleFileSummary("geoip.dat")
+                        _settingsState.value =
+                            _settingsState.value.copy(
+                                files =
+                                    _settingsState.value.files.copy(
+                                        isGeoipCustom = prefs.customGeoipImported
+                                    ),
+                                info =
+                                    _settingsState.value.info.copy(
+                                        geoipSummary = fileManager.getRuleFileSummary("geoip.dat")
+                                    ),
                             )
-                        )
                     }
 
                     "geosite.dat" -> {
-                        _settingsState.value = _settingsState.value.copy(
-                            files = _settingsState.value.files.copy(
-                                isGeositeCustom = prefs.customGeositeImported
-                            ),
-                            info = _settingsState.value.info.copy(
-                                geositeSummary = fileManager.getRuleFileSummary("geosite.dat")
+                        _settingsState.value =
+                            _settingsState.value.copy(
+                                files =
+                                    _settingsState.value.files.copy(
+                                        isGeositeCustom = prefs.customGeositeImported
+                                    ),
+                                info =
+                                    _settingsState.value.info.copy(
+                                        geositeSummary =
+                                            fileManager.getRuleFileSummary("geosite.dat")
+                                    ),
                             )
-                        )
                     }
                 }
                 _uiEvent.trySend(
@@ -670,19 +777,25 @@ class MainViewModel(application: Application) :
                     )
                 )
             } else {
-                _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.import_failed)))
+                _uiEvent.trySend(
+                    MainViewUiEvent.ShowSnackbar(application.getString(R.string.import_failed))
+                )
             }
         }
     }
 
     fun showExportFailedSnackbar() {
-        _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.export_failed)))
+        _uiEvent.trySend(
+            MainViewUiEvent.ShowSnackbar(application.getString(R.string.export_failed))
+        )
     }
 
     fun startTProxyService(action: String) {
         viewModelScope.launch {
             if (_selectedConfigFile.value == null) {
-                _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.not_select_config)))
+                _uiEvent.trySend(
+                    MainViewUiEvent.ShowSnackbar(application.getString(R.string.not_select_config))
+                )
                 Log.w(TAG, "Cannot start service: no config file selected.")
                 setControlMenuClickable(true)
                 return@launch
@@ -707,9 +820,7 @@ class MainViewModel(application: Application) :
             } else {
                 Log.w(TAG, "No activity found to handle export intent.")
                 _uiEvent.trySend(
-                    MainViewUiEvent.ShowSnackbar(
-                        application.getString(R.string.no_app_for_export)
-                    )
+                    MainViewUiEvent.ShowSnackbar(application.getString(R.string.no_app_for_export))
                 )
             }
         }
@@ -717,10 +828,12 @@ class MainViewModel(application: Application) :
 
     fun stopTProxyService() {
         viewModelScope.launch {
-            val intent = Intent(
-                application,
-                TProxyService::class.java
-            ).setAction(TProxyService.ACTION_DISCONNECT)
+            val intent =
+                Intent(
+                        application,
+                        TProxyService::class.java,
+                    )
+                    .setAction(TProxyService.ACTION_DISCONNECT)
             _uiEvent.trySend(MainViewUiEvent.StartService(intent))
         }
     }
@@ -728,7 +841,9 @@ class MainViewModel(application: Application) :
     fun prepareAndStartVpn(vpnPrepareLauncher: ActivityResultLauncher<Intent>) {
         viewModelScope.launch {
             if (_selectedConfigFile.value == null) {
-                _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.not_select_config)))
+                _uiEvent.trySend(
+                    MainViewUiEvent.ShowSnackbar(application.getString(R.string.not_select_config))
+                )
                 Log.w(TAG, "Cannot prepare VPN: no config file selected.")
                 setControlMenuClickable(true)
                 return@launch
@@ -806,25 +921,27 @@ class MainViewModel(application: Application) :
     }
 
     fun updateConnectivityTestTarget(target: String) {
-        val isValid = try {
-            val url = URL(target)
-            url.protocol == "http" || url.protocol == "https"
-        } catch (e: Exception) {
-            false
-        }
+        val isValid =
+            try {
+                val url = URL(target)
+                url.protocol == "http" || url.protocol == "https"
+            } catch (e: Exception) {
+                false
+            }
         if (isValid) {
             prefs.connectivityTestTarget = target
-            _settingsState.value = _settingsState.value.copy(
-                connectivityTestTarget = InputFieldState(target)
-            )
+            _settingsState.value =
+                _settingsState.value.copy(connectivityTestTarget = InputFieldState(target))
         } else {
-            _settingsState.value = _settingsState.value.copy(
-                connectivityTestTarget = InputFieldState(
-                    value = target,
-                    error = application.getString(R.string.connectivity_test_invalid_url),
-                    isValid = false
+            _settingsState.value =
+                _settingsState.value.copy(
+                    connectivityTestTarget =
+                        InputFieldState(
+                            value = target,
+                            error = application.getString(R.string.connectivity_test_invalid_url),
+                            isValid = false,
+                        )
                 )
-            )
         }
     }
 
@@ -832,17 +949,18 @@ class MainViewModel(application: Application) :
         val timeoutInt = timeout.toIntOrNull()
         if (timeoutInt != null && timeoutInt > 0) {
             prefs.connectivityTestTimeout = timeoutInt
-            _settingsState.value = _settingsState.value.copy(
-                connectivityTestTimeout = InputFieldState(timeout)
-            )
+            _settingsState.value =
+                _settingsState.value.copy(connectivityTestTimeout = InputFieldState(timeout))
         } else {
-            _settingsState.value = _settingsState.value.copy(
-                connectivityTestTimeout = InputFieldState(
-                    value = timeout,
-                    error = application.getString(R.string.invalid_timeout),
-                    isValid = false
+            _settingsState.value =
+                _settingsState.value.copy(
+                    connectivityTestTimeout =
+                        InputFieldState(
+                            value = timeout,
+                            error = application.getString(R.string.invalid_timeout),
+                            isValid = false,
+                        )
                 )
-            )
         }
     }
 
@@ -853,7 +971,11 @@ class MainViewModel(application: Application) :
             try {
                 url = URL(prefs.connectivityTestTarget)
             } catch (e: Exception) {
-                _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.connectivity_test_invalid_url)))
+                _uiEvent.trySend(
+                    MainViewUiEvent.ShowSnackbar(
+                        application.getString(R.string.connectivity_test_invalid_url)
+                    )
+                )
                 return@launch
             }
             val host = url.host
@@ -868,20 +990,26 @@ class MainViewModel(application: Application) :
                 Socket(proxy).use { socket ->
                     socket.soTimeout = timeout
                     socket.connect(InetSocketAddress(host, port), timeout)
-                    val (writer, reader) = if (isHttps) {
-                        val sslSocket = (SSLSocketFactory.getDefault() as SSLSocketFactory)
-                            .createSocket(socket, host, port, true) as javax.net.ssl.SSLSocket
-                        sslSocket.startHandshake()
-                        Pair(
-                            sslSocket.outputStream.bufferedWriter(),
-                            sslSocket.inputStream.bufferedReader()
-                        )
-                    } else {
-                        Pair(
-                            socket.getOutputStream().bufferedWriter(),
-                            socket.getInputStream().bufferedReader()
-                        )
-                    }
+                    val (writer, reader) =
+                        if (isHttps) {
+                            val sslSocket =
+                                (SSLSocketFactory.getDefault() as SSLSocketFactory).createSocket(
+                                    socket,
+                                    host,
+                                    port,
+                                    true,
+                                ) as javax.net.ssl.SSLSocket
+                            sslSocket.startHandshake()
+                            Pair(
+                                sslSocket.outputStream.bufferedWriter(),
+                                sslSocket.inputStream.bufferedReader(),
+                            )
+                        } else {
+                            Pair(
+                                socket.getOutputStream().bufferedWriter(),
+                                socket.getInputStream().bufferedReader(),
+                            )
+                        }
                     writer.write("GET $path HTTP/1.1\r\nHost: $host\r\nConnection: close\r\n\r\n")
                     writer.flush()
                     val firstLine = reader.readLine()
@@ -891,7 +1019,7 @@ class MainViewModel(application: Application) :
                             MainViewUiEvent.ShowSnackbar(
                                 application.getString(
                                     R.string.connectivity_test_latency,
-                                    latency.toInt()
+                                    latency.toInt(),
                                 )
                             )
                         )
@@ -916,28 +1044,20 @@ class MainViewModel(application: Application) :
     fun registerTProxyServiceReceivers() {
         val application = application
         val startSuccessFilter = IntentFilter(TProxyService.ACTION_START)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            application.registerReceiver(
-                startReceiver,
-                startSuccessFilter,
-                Context.RECEIVER_NOT_EXPORTED
-            )
-        } else {
-            @Suppress("UnspecifiedRegisterReceiverFlag")
-            application.registerReceiver(startReceiver, startSuccessFilter)
-        }
+        ContextCompat.registerReceiver(
+            application,
+            startReceiver,
+            startSuccessFilter,
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
 
         val stopSuccessFilter = IntentFilter(TProxyService.ACTION_STOP)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            application.registerReceiver(
-                stopReceiver,
-                stopSuccessFilter,
-                Context.RECEIVER_NOT_EXPORTED
-            )
-        } else {
-            @Suppress("UnspecifiedRegisterReceiverFlag")
-            application.registerReceiver(stopReceiver, stopSuccessFilter)
-        }
+        ContextCompat.registerReceiver(
+            application,
+            stopReceiver,
+            stopSuccessFilter,
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         Log.d(TAG, "TProxyService receivers registered.")
     }
 
@@ -951,15 +1071,20 @@ class MainViewModel(application: Application) :
     fun restoreDefaultGeoip(callback: () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             fileManager.restoreDefaultGeoip()
-            _settingsState.value = _settingsState.value.copy(
-                files = _settingsState.value.files.copy(
-                    isGeoipCustom = prefs.customGeoipImported
-                ),
-                info = _settingsState.value.info.copy(
-                    geoipSummary = fileManager.getRuleFileSummary("geoip.dat")
+            _settingsState.value =
+                _settingsState.value.copy(
+                    files =
+                        _settingsState.value.files.copy(isGeoipCustom = prefs.customGeoipImported),
+                    info =
+                        _settingsState.value.info.copy(
+                            geoipSummary = fileManager.getRuleFileSummary("geoip.dat")
+                        ),
+                )
+            _uiEvent.trySend(
+                MainViewUiEvent.ShowSnackbar(
+                    application.getString(R.string.rule_file_restore_geoip_success)
                 )
             )
-            _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.rule_file_restore_geoip_success)))
             withContext(Dispatchers.Main) {
                 Log.d(TAG, "Restored default geoip.dat.")
                 callback()
@@ -970,15 +1095,22 @@ class MainViewModel(application: Application) :
     fun restoreDefaultGeosite(callback: () -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             fileManager.restoreDefaultGeosite()
-            _settingsState.value = _settingsState.value.copy(
-                files = _settingsState.value.files.copy(
-                    isGeositeCustom = prefs.customGeositeImported
-                ),
-                info = _settingsState.value.info.copy(
-                    geositeSummary = fileManager.getRuleFileSummary("geosite.dat")
+            _settingsState.value =
+                _settingsState.value.copy(
+                    files =
+                        _settingsState.value.files.copy(
+                            isGeositeCustom = prefs.customGeositeImported
+                        ),
+                    info =
+                        _settingsState.value.info.copy(
+                            geositeSummary = fileManager.getRuleFileSummary("geosite.dat")
+                        ),
+                )
+            _uiEvent.trySend(
+                MainViewUiEvent.ShowSnackbar(
+                    application.getString(R.string.rule_file_restore_geosite_success)
                 )
             )
-            _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.rule_file_restore_geosite_success)))
             withContext(Dispatchers.Main) {
                 Log.d(TAG, "Restored default geosite.dat.")
                 callback()
@@ -1004,96 +1136,133 @@ class MainViewModel(application: Application) :
             return
         }
 
-        val job = viewModelScope.launch(Dispatchers.IO) {
-            val progressFlow = if (fileName == "geoip.dat") {
-                prefs.geoipUrl = url
-                _geoipDownloadProgress
-            } else {
-                prefs.geositeUrl = url
-                _geositeDownloadProgress
-            }
-
-            val client = OkHttpClient.Builder().apply {
-                if (_isServiceEnabled.value) {
-                    proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", prefs.socksPort)))
-                }
-            }.build()
-
-            try {
-                progressFlow.value = application.getString(R.string.connecting)
-
-                val request = Request.Builder().url(url).build()
-                val call = client.newCall(request)
-                val response = call.await()
-
-                if (!response.isSuccessful) {
-                    throw IOException("Failed to download file: ${response.code}")
-                }
-
-                val body = response.body ?: throw IOException("Response body is null")
-                val totalBytes = body.contentLength()
-                var bytesRead = 0L
-                var lastProgress = -1
-
-                body.byteStream().use { inputStream ->
-                    val success = fileManager.saveRuleFile(inputStream, fileName) { read ->
-                        ensureActive()
-                        bytesRead += read
-                        if (totalBytes > 0) {
-                            val progress = (bytesRead * 100 / totalBytes).toInt()
-                            if (progress != lastProgress) {
-                                progressFlow.value =
-                                    application.getString(R.string.downloading, progress)
-                                lastProgress = progress
-                            }
-                        } else {
-                            if (lastProgress == -1) {
-                                progressFlow.value =
-                                    application.getString(R.string.downloading_no_size)
-                                lastProgress = 0
-                            }
-                        }
-                    }
-                    if (success) {
-                        when (fileName) {
-                            "geoip.dat" -> {
-                                _settingsState.value = _settingsState.value.copy(
-                                    files = _settingsState.value.files.copy(
-                                        isGeoipCustom = prefs.customGeoipImported
-                                    ),
-                                    info = _settingsState.value.info.copy(
-                                        geoipSummary = fileManager.getRuleFileSummary("geoip.dat")
-                                    )
-                                )
-                            }
-
-                            "geosite.dat" -> {
-                                _settingsState.value = _settingsState.value.copy(
-                                    files = _settingsState.value.files.copy(
-                                        isGeositeCustom = prefs.customGeositeImported
-                                    ),
-                                    info = _settingsState.value.info.copy(
-                                        geositeSummary = fileManager.getRuleFileSummary("geosite.dat")
-                                    )
-                                )
-                            }
-                        }
-                        _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.download_success)))
+        val job =
+            viewModelScope.launch(Dispatchers.IO) {
+                val progressFlow =
+                    if (fileName == "geoip.dat") {
+                        prefs.geoipUrl = url
+                        _geoipDownloadProgress
                     } else {
-                        _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.download_failed)))
+                        prefs.geositeUrl = url
+                        _geositeDownloadProgress
                     }
+
+                val client =
+                    OkHttpClient.Builder()
+                        .apply {
+                            if (_isServiceEnabled.value) {
+                                proxy(
+                                    Proxy(
+                                        Proxy.Type.SOCKS,
+                                        InetSocketAddress("127.0.0.1", prefs.socksPort),
+                                    )
+                                )
+                            }
+                        }
+                        .build()
+
+                try {
+                    progressFlow.value = application.getString(R.string.connecting)
+
+                    val request = Request.Builder().url(url).build()
+                    val call = client.newCall(request)
+                    val response = call.await()
+
+                    if (!response.isSuccessful) {
+                        throw IOException("Failed to download file: ${response.code}")
+                    }
+
+                    val body = response.body
+                    val totalBytes = body.contentLength()
+                    var bytesRead = 0L
+                    var lastProgress = -1
+
+                    body.byteStream().use { inputStream ->
+                        val success =
+                            fileManager.saveRuleFile(inputStream, fileName) { read ->
+                                ensureActive()
+                                bytesRead += read
+                                if (totalBytes > 0) {
+                                    val progress = (bytesRead * 100 / totalBytes).toInt()
+                                    if (progress != lastProgress) {
+                                        progressFlow.value =
+                                            application.getString(R.string.downloading, progress)
+                                        lastProgress = progress
+                                    }
+                                } else {
+                                    if (lastProgress == -1) {
+                                        progressFlow.value =
+                                            application.getString(R.string.downloading_no_size)
+                                        lastProgress = 0
+                                    }
+                                }
+                            }
+                        if (success) {
+                            when (fileName) {
+                                "geoip.dat" -> {
+                                    _settingsState.value =
+                                        _settingsState.value.copy(
+                                            files =
+                                                _settingsState.value.files.copy(
+                                                    isGeoipCustom = prefs.customGeoipImported
+                                                ),
+                                            info =
+                                                _settingsState.value.info.copy(
+                                                    geoipSummary =
+                                                        fileManager.getRuleFileSummary("geoip.dat")
+                                                ),
+                                        )
+                                }
+
+                                "geosite.dat" -> {
+                                    _settingsState.value =
+                                        _settingsState.value.copy(
+                                            files =
+                                                _settingsState.value.files.copy(
+                                                    isGeositeCustom = prefs.customGeositeImported
+                                                ),
+                                            info =
+                                                _settingsState.value.info.copy(
+                                                    geositeSummary =
+                                                        fileManager.getRuleFileSummary(
+                                                            "geosite.dat"
+                                                        )
+                                                ),
+                                        )
+                                }
+                            }
+                            _uiEvent.trySend(
+                                MainViewUiEvent.ShowSnackbar(
+                                    application.getString(R.string.download_success)
+                                )
+                            )
+                        } else {
+                            _uiEvent.trySend(
+                                MainViewUiEvent.ShowSnackbar(
+                                    application.getString(R.string.download_failed)
+                                )
+                            )
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    Log.d(TAG, "Download cancelled for $fileName")
+                    _uiEvent.trySend(
+                        MainViewUiEvent.ShowSnackbar(
+                            application.getString(R.string.download_cancelled)
+                        )
+                    )
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to download rule file", e)
+                    _uiEvent.trySend(
+                        MainViewUiEvent.ShowSnackbar(
+                            application.getString(R.string.download_failed) + ": " + e.message
+                        )
+                    )
+                } finally {
+                    progressFlow.value = null
+                    updateSettingsState()
                 }
-            } catch (e: CancellationException) {
-                Log.d(TAG, "Download cancelled for $fileName")
-                _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.download_cancelled)))
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to download rule file", e)
-                _uiEvent.trySend(MainViewUiEvent.ShowSnackbar(application.getString(R.string.download_failed) + ": " + e.message))
-            } finally {
-                progressFlow.value = null
-                updateSettingsState()
             }
-        }
 
         if (fileName == "geoip.dat") {
             geoipDownloadJob = job
@@ -1112,37 +1281,47 @@ class MainViewModel(application: Application) :
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private suspend fun Call.await(): Response = suspendCancellableCoroutine { continuation ->
-        enqueue(object : Callback {
-            override fun onResponse(call: Call, response: Response) {
-                continuation.resume(response, null)
-            }
+        enqueue(
+            object : Callback {
+                override fun onResponse(call: Call, response: Response) {
+                    continuation.resume(response) { _, value, _ -> value.close() }
+                }
 
-            override fun onFailure(call: Call, e: IOException) {
-                if (continuation.isCancelled) return
-                continuation.resumeWith(Result.failure(e))
+                override fun onFailure(call: Call, e: IOException) {
+                    if (continuation.isCancelled) return
+                    continuation.resumeWith(Result.failure(e))
+                }
             }
-        })
+        )
         continuation.invokeOnCancellation {
             try {
                 cancel()
-            } catch (_: Throwable) {
-            }
+            } catch (_: Throwable) {}
         }
     }
 
     fun checkForUpdates() {
         viewModelScope.launch(Dispatchers.IO) {
             _isCheckingForUpdates.value = true
-            val client = OkHttpClient.Builder().apply {
-                if (_isServiceEnabled.value) {
-                    proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", prefs.socksPort)))
-                }
-            }.build()
+            val client =
+                OkHttpClient.Builder()
+                    .apply {
+                        if (_isServiceEnabled.value) {
+                            proxy(
+                                Proxy(
+                                    Proxy.Type.SOCKS,
+                                    InetSocketAddress("127.0.0.1", prefs.socksPort),
+                                )
+                            )
+                        }
+                    }
+                    .build()
 
-            val request = Request.Builder()
-                .url(application.getString(R.string.source_url) + "/releases/latest")
-                .head()
-                .build()
+            val request =
+                Request.Builder()
+                    .url(application.getString(R.string.source_url) + "/releases/latest")
+                    .head()
+                    .build()
 
             try {
                 val response = client.newCall(request).await()
@@ -1163,7 +1342,9 @@ class MainViewModel(application: Application) :
                 Log.e(TAG, "Failed to check for updates", e)
                 _uiEvent.trySend(
                     MainViewUiEvent.ShowSnackbar(
-                        application.getString(R.string.failed_to_check_for_updates) + ": " + e.message
+                        application.getString(R.string.failed_to_check_for_updates) +
+                            ": " +
+                            e.message
                     )
                 )
             } finally {
@@ -1174,7 +1355,7 @@ class MainViewModel(application: Application) :
 
     fun downloadNewVersion(versionTag: String) {
         val url = application.getString(R.string.source_url) + "/releases/tag/v$versionTag"
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        val intent = Intent(Intent.ACTION_VIEW, url.toUri())
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         application.startActivity(intent)
         _newVersionAvailable.value = null
@@ -1200,6 +1381,10 @@ class MainViewModel(application: Application) :
         return 0
     }
 
+    override fun onCleared() {
+        closeStatsClients()
+    }
+
     companion object {
         private const val IPV4_REGEX =
             "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
@@ -1219,9 +1404,8 @@ class MainViewModel(application: Application) :
     }
 }
 
-class MainViewModelFactory(
-    private val application: Application
-) : ViewModelProvider.AndroidViewModelFactory(application) {
+class MainViewModelFactory(private val application: Application) :
+    ViewModelProvider.AndroidViewModelFactory(application) {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(MainViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
@@ -1230,4 +1414,3 @@ class MainViewModelFactory(
         throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
-

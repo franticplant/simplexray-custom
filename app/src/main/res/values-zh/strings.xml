@@ -108,7 +108,6 @@
     <string name="stats_uplink">上行流量</string>
     <string name="stats_downlink">下行流量</string>
     <string name="stats_num_goroutine">Goroutine数量</string>
-    <string name="stats_num_gc">垃圾回收次数</string>
     <string name="stats_alloc">已分配内存</string>
     <string name="stats_uptime">运行时间</string>
     <string name="check_for_updates">检查更新</string>

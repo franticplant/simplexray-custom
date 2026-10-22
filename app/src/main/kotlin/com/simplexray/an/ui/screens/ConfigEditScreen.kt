@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.ui.screens
 
 import android.content.Intent
@@ -62,7 +65,7 @@ import kotlinx.coroutines.flow.collectLatest
 fun ConfigEditScreen(
     onBackClick: () -> Unit,
     snackbarHostState: SnackbarHostState,
-    viewModel: ConfigEditViewModel
+    viewModel: ConfigEditViewModel,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val filename by viewModel.filename.collectAsStateWithLifecycle()
@@ -74,9 +77,10 @@ fun ConfigEditScreen(
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
     val isKeyboardOpen = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val focusManager = LocalFocusManager.current
-    val shareLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) {}
+    val shareLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.StartActivityForResult()
+        ) {}
 
     LaunchedEffect(Unit) {
         viewModel.uiEvent.collectLatest { event ->
@@ -88,129 +92,150 @@ fun ConfigEditScreen(
                 is ConfigEditUiEvent.ShowSnackbar -> {
                     snackbarHostState.showSnackbar(
                         event.message,
-                        duration = SnackbarDuration.Short
+                        duration = SnackbarDuration.Short,
                     )
                 }
 
                 is ConfigEditUiEvent.ShareContent -> {
-                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, event.content)
-                    }
+                    val shareIntent =
+                        Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, event.content)
+                        }
                     shareLauncher.launch(Intent.createChooser(shareIntent, null))
                 }
             }
         }
     }
 
-    Scaffold(modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection), topBar = {
-        TopAppBar(title = { Text(stringResource(id = R.string.config)) }, navigationIcon = {
-            IconButton(onClick = onBackClick) {
-                Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = stringResource(
-                        R.string.back
-                    )
-                )
-            }
-        }, actions = {
-            IconButton(onClick = {
-                viewModel.saveConfigFile()
-                focusManager.clearFocus()
-            }, enabled = hasConfigChanged) {
-                Icon(
-                    painter = painterResource(id = R.drawable.save),
-                    contentDescription = stringResource(id = R.string.save)
-                )
-            }
-            IconButton(onClick = { showMenu = !showMenu }) {
-                Icon(
-                    Icons.Default.MoreVert,
-                    contentDescription = stringResource(R.string.more)
-                )
-            }
-            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(id = R.string.share)) },
-                    onClick = {
-                        viewModel.shareConfigFile()
-                        showMenu = false
-                    })
-            }
-        }, scrollBehavior = scrollBehavior
-        )
-    }, snackbarHost = { SnackbarHost(snackbarHostState) }, content = { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .imePadding()
-                .padding(top = paddingValues.calculateTopPadding())
-                .verticalScroll(scrollState)
-        ) {
-            TextField(value = filename,
-                onValueChange = { v ->
-                    viewModel.onFilenameChange(v)
-                },
-                label = { Text(stringResource(id = R.string.filename)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    disabledContainerColor = Color.Transparent,
-                    errorContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                    errorIndicatorColor = Color.Transparent,
-                ),
-                isError = filenameErrorMessage != null,
-                supportingText = {
-                    filenameErrorMessage?.let { Text(it) }
-                })
-
-            TextField(
-                value = configTextFieldValue,
-                onValueChange = { newTextFieldValue ->
-                    val newText = newTextFieldValue.text
-                    val oldText = configTextFieldValue.text
-                    val cursorPosition = newTextFieldValue.selection.start
-
-                    if (newText.length == oldText.length + 1 &&
-                        cursorPosition > 0 &&
-                        newText[cursorPosition - 1] == '\n'
-                    ) {
-                        val pair = viewModel.handleAutoIndent(newText, cursorPosition - 1)
-                        viewModel.onConfigContentChange(
-                            TextFieldValue(
-                                text = pair.first,
-                                selection = TextRange(pair.second)
-                            )
+    Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(id = R.string.config)) },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back),
                         )
-                    } else {
-                        viewModel.onConfigContentChange(newTextFieldValue.copy(text = newText))
                     }
                 },
-                visualTransformation = bracketMatcherTransformation(configTextFieldValue),
-                label = { Text(stringResource(R.string.content)) },
-                modifier = Modifier
-                    .padding(bottom = if (isKeyboardOpen) 0.dp else paddingValues.calculateBottomPadding())
-                    .fillMaxWidth(),
-                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                keyboardOptions = KeyboardOptions.Default.copy(
-                    keyboardType = KeyboardType.Text
-                ),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    disabledContainerColor = Color.Transparent,
-                    errorContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                    errorIndicatorColor = Color.Transparent,
-                )
+                actions = {
+                    IconButton(
+                        onClick = {
+                            viewModel.saveConfigFile()
+                            focusManager.clearFocus()
+                        },
+                        enabled = hasConfigChanged,
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.save),
+                            contentDescription = stringResource(id = R.string.save),
+                        )
+                    }
+                    IconButton(onClick = { showMenu = !showMenu }) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = stringResource(R.string.more),
+                        )
+                    }
+                    DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(id = R.string.share)) },
+                            onClick = {
+                                viewModel.shareConfigFile()
+                                showMenu = false
+                            },
+                        )
+                    }
+                },
+                scrollBehavior = scrollBehavior,
             )
-        }
-    })
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        content = { paddingValues ->
+            Column(
+                modifier =
+                    Modifier.fillMaxSize()
+                        .imePadding()
+                        .padding(top = paddingValues.calculateTopPadding())
+                        .verticalScroll(scrollState)
+            ) {
+                TextField(
+                    value = filename,
+                    onValueChange = { v ->
+                        viewModel.onFilenameChange(v)
+                    },
+                    label = { Text(stringResource(id = R.string.filename)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors =
+                        TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                            errorContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent,
+                            errorIndicatorColor = Color.Transparent,
+                        ),
+                    isError = filenameErrorMessage != null,
+                    supportingText = {
+                        filenameErrorMessage?.let { Text(it) }
+                    },
+                )
+
+                TextField(
+                    value = configTextFieldValue,
+                    onValueChange = { newTextFieldValue ->
+                        val newText = newTextFieldValue.text
+                        val oldText = configTextFieldValue.text
+                        val cursorPosition = newTextFieldValue.selection.start
+
+                        if (
+                            newText.length == oldText.length + 1 &&
+                                cursorPosition > 0 &&
+                                newText[cursorPosition - 1] == '\n'
+                        ) {
+                            val pair = viewModel.handleAutoIndent(newText, cursorPosition - 1)
+                            viewModel.onConfigContentChange(
+                                TextFieldValue(
+                                    text = pair.first,
+                                    selection = TextRange(pair.second),
+                                )
+                            )
+                        } else {
+                            viewModel.onConfigContentChange(newTextFieldValue.copy(text = newText))
+                        }
+                    },
+                    visualTransformation = bracketMatcherTransformation(configTextFieldValue),
+                    label = { Text(stringResource(R.string.content)) },
+                    modifier =
+                        Modifier.padding(
+                                bottom =
+                                    if (isKeyboardOpen) 0.dp
+                                    else paddingValues.calculateBottomPadding()
+                            )
+                            .fillMaxWidth(),
+                    textStyle =
+                        MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                    keyboardOptions =
+                        KeyboardOptions.Default.copy(keyboardType = KeyboardType.Text),
+                    colors =
+                        TextFieldDefaults.colors(
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                            errorContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent,
+                            errorIndicatorColor = Color.Transparent,
+                        ),
+                )
+            }
+        },
+    )
 }

@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.common.configFormat
 
 import android.content.Context
@@ -9,7 +12,7 @@ import java.net.URLDecoder
 import java.util.Base64
 import java.util.zip.Inflater
 
-class SimpleXrayFormatConverter: ConfigFormatConverter {
+class SimpleXrayFormatConverter : ConfigFormatConverter {
     override fun detect(content: String): Boolean {
         return content.startsWith("simplexray://config/")
     }
@@ -26,7 +29,9 @@ class SimpleXrayFormatConverter: ConfigFormatConverter {
         val filenameError = FilenameValidator.validateFilename(context, decodedName)
         if (filenameError != null) {
             Log.e(TAG, "Invalid filename in simplexray URI: $filenameError")
-            return Result.failure(RuntimeException("Invalid filename in simplexray URI: $filenameError"))
+            return Result.failure(
+                RuntimeException("Invalid filename in simplexray URI: $filenameError")
+            )
         }
 
         val decodedContent = Base64.getUrlDecoder().decode(parts[1])

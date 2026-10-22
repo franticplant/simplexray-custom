@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The notification glyph, centred in the adaptive icon's 66dp safe zone at its own aspect
+     ratio (292:160.875), for themed launcher icons. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_stat_name"
+    android:insetLeft="21dp"
+    android:insetRight="21dp"
+    android:insetTop="36dp"
+    android:insetBottom="36dp" />

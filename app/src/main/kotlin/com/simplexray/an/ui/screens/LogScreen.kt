@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.ui.screens
 
 import androidx.compose.foundation.layout.Box
@@ -37,7 +40,7 @@ import my.nanihadesuka.compose.LazyColumnScrollbar
 @Composable
 fun LogScreen(
     logViewModel: LogViewModel,
-    listState: LazyListState
+    listState: LazyListState,
 ) {
     val context = LocalContext.current
     val filteredEntries by logViewModel.filteredEntries.collectAsStateWithLifecycle()
@@ -58,13 +61,11 @@ fun LogScreen(
         }
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize()
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
         if (filteredEntries.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     stringResource(R.string.no_log_entries),
@@ -76,12 +77,12 @@ fun LogScreen(
         } else {
             LazyColumnScrollbar(
                 state = listState,
-                settings = ScrollbarDefaults.defaultScrollbarSettings()
+                settings = ScrollbarDefaults.defaultScrollbarSettings(),
             ) {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.padding(start = 6.dp, end = 6.dp),
-                    reverseLayout = true
+                    reverseLayout = true,
                 ) {
                     items(filteredEntries) { logEntry ->
                         LogEntryItem(logEntry = logEntry)
@@ -97,42 +98,39 @@ fun LogEntryItem(logEntry: String) {
     val colorOnSurface = MaterialTheme.colorScheme.onSurface
     val timestampColor = MaterialTheme.colorScheme.primary
 
-    val annotatedString = remember(logEntry) {
-        buildAnnotatedString {
-            var endIndex = 0
-            while (endIndex < logEntry.length) {
-                val c = logEntry[endIndex]
-                if (Character.isDigit(c) || c == '/' || c == ' ' || c == ':' || c == '.') {
-                    endIndex++
-                } else {
-                    break
-                }
-            }
-            if (endIndex > 0) {
-                val potentialTimestamp = logEntry.substring(0, endIndex)
-                if (potentialTimestamp.contains("/") && potentialTimestamp.contains(":")) {
-                    withStyle(
-                        style = SpanStyle(
-                            color = timestampColor
-                        )
-                    ) {
-                        append(logEntry.substring(0, endIndex))
+    val annotatedString =
+        remember(logEntry) {
+            buildAnnotatedString {
+                var endIndex = 0
+                while (endIndex < logEntry.length) {
+                    val c = logEntry[endIndex]
+                    if (Character.isDigit(c) || c == '/' || c == ' ' || c == ':' || c == '.') {
+                        endIndex++
+                    } else {
+                        break
                     }
-                    append(logEntry.substring(endIndex))
+                }
+                if (endIndex > 0) {
+                    val potentialTimestamp = logEntry.substring(0, endIndex)
+                    if (potentialTimestamp.contains("/") && potentialTimestamp.contains(":")) {
+                        withStyle(style = SpanStyle(color = timestampColor)) {
+                            append(logEntry.substring(0, endIndex))
+                        }
+                        append(logEntry.substring(endIndex))
+                    } else {
+                        append(logEntry)
+                    }
                 } else {
                     append(logEntry)
                 }
-            } else {
-                append(logEntry)
             }
         }
-    }
 
     Text(
         text = annotatedString,
         fontSize = 13.sp,
         fontFamily = FontFamily.Monospace,
         color = colorOnSurface,
-        modifier = Modifier.padding(vertical = 2.dp)
+        modifier = Modifier.padding(vertical = 2.dp),
     )
 }

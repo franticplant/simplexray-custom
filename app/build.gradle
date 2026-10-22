@@ -1,211 +1,255 @@
 plugins {
-    id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
-    id 'org.jetbrains.kotlin.plugin.compose' version "${kotlin_version}"
-    id 'com.google.protobuf' version '0.9.4'
-}
-
-protobuf {
-    protoc {
-        artifact = 'com.google.protobuf:protoc:3.25.1'
-    }
-    plugins {
-        grpc {
-            artifact = 'io.grpc:protoc-gen-grpc-java:1.65.0'
-        }
-    }
-    generateProtoTasks {
-        all().each { task ->
-            task.builtins {
-                java {}
-            }
-            task.plugins {
-                grpc {}
-            }
-        }
-    }
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.protobuf)
 }
 
 def versionProps = new Properties()
-file("$rootDir/version.properties").withInputStream { versionProps.load(it) }
+rootProject.file('version.properties').withInputStream { versionProps.load(it) }
+
+protobuf {
+    protoc {
+        artifact = libs.protobuf.protoc.get().toString()
+    }
+    plugins {
+        grpc {
+            artifact = libs.grpc.protoc.gen.get().toString()
+        }
+    }
+    generateProtoTasks {
+        all().configureEach { task ->
+            task.builtins {
+                java { option 'lite' }
+            }
+            task.plugins {
+                grpc { option 'lite' }
+            }
+        }
+    }
+}
 
 android {
-    namespace "com.simplexray.an"
-    compileSdk 36
+    namespace = 'com.simplexray.an'
+    compileSdk = 37
+    ndkVersion = versionProps.NDK_VERSION
 
     defaultConfig {
-        applicationId "com.simplexray.an"
-        versionCode versionProps.APP_VERSION_CODE.toInteger()
-        versionName versionProps.APP_VERSION_NAME
+        applicationId = 'io.github.franticplant.simplexray'
+        minSdk = 29
+        targetSdk = 36
+        versionCode = versionProps.APP_VERSION_CODE.toInteger()
+        versionName = versionProps.APP_VERSION_NAME
+
         ndk {
-            abiFilters "arm64-v8a", "x86_64"
+            abiFilters 'arm64-v8a', 'x86_64'
         }
         externalNativeBuild {
             ndkBuild {
                 arguments "APP_CFLAGS+=-DPKGNAME=com/simplexray/an/service -ffile-prefix-map=${rootDir}=."
-                arguments "APP_LDFLAGS+=-Wl,--build-id=none"
+                arguments 'APP_LDFLAGS+=-Wl,--build-id=none'
             }
         }
-        targetSdk 35
-        minSdk 29
     }
 
+    // Signing. Credentials never live in the repo: CI passes them in the
+    // environment (see .github/workflows/release.yml) and local builds read a
+    // properties file. When a release key is configured, every build type is
+    // signed with it, so a locally built debug APK installs over a released one
+    // without losing app data. Without one, everything is signed with the
+    // checked-in debug.keystore, which is public and only good for testing.
+    def signing = signingProperties()
     signingConfigs {
-        release {
-            enableV1Signing false
-            enableV2Signing false
-            enableV3Signing true
-        }
-    }
-
-    def isSigningEnabled = false
-    def myKeystorePath = System.getenv("KEYSTORE_PATH") ?: (project.hasProperty("keystorePath") ? project.getProperty("keystorePath") : null)
-    def myStorePassword = System.getenv("KEYSTORE_PASSWORD") ?: (project.hasProperty("storePassword") ? project.getProperty("storePassword") : "android")
-    def myKeyAlias = System.getenv("KEY_ALIAS") ?: (project.hasProperty("keyAlias") ? project.getProperty("keyAlias") : "androiddebugkey")
-    def myKeyPassword = System.getenv("KEY_PASSWORD") ?: (project.hasProperty("keyPassword") ? project.getProperty("keyPassword") : "android")
-
-    def propsFile = rootProject.file('store.properties')
-    if (propsFile.exists()) {
-        def props = new Properties()
-        props.load(new FileInputStream(propsFile))
-        if (!myKeystorePath && props.containsKey('storeFile')) {
-            myKeystorePath = props['storeFile']
-        }
-        if (props.containsKey('storePassword')) myStorePassword = props['storePassword']
-        if (props.containsKey('keyAlias')) myKeyAlias = props['keyAlias']
-        if (props.containsKey('keyPassword')) myKeyPassword = props['keyPassword']
-    }
-
-    if (!myKeystorePath) {
-        def defaultKeystore = rootProject.file('debug.keystore')
-        if (defaultKeystore.exists()) {
-            myKeystorePath = defaultKeystore.absolutePath
-        }
-    }
-
-    if (myKeystorePath) {
-        def keystoreFile = file(myKeystorePath)
-        if (keystoreFile.exists()) {
-            signingConfigs.release {
-                storeFile = keystoreFile
-                storePassword = myStorePassword
-                keyAlias = myKeyAlias
-                keyPassword = myKeyPassword
-
-                enableV1Signing false
-                enableV2Signing false
-                enableV3Signing true
-            }
-            isSigningEnabled = true
+        simplexray {
+            storeFile = file(signing.storeFile)
+            storePassword = signing.storePassword
+            keyAlias = signing.keyAlias
+            keyPassword = signing.keyPassword
+            enableV1Signing = false
+            enableV2Signing = false
+            enableV3Signing = true
         }
     }
 
     buildTypes {
         release {
-            minifyEnabled true
-            shrinkResources true
-            signingConfig isSigningEnabled ? signingConfigs.release : null
-            
-            proguardFiles(
-                getDefaultProguardFile('proguard-android-optimize.txt'),
-                'proguard-rules.pro'
-            )
+            minifyEnabled = true
+            shrinkResources = true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
-       debug {
-            minifyEnabled false
-            signingConfig isSigningEnabled ? signingConfigs.release : null
-            debuggable true
+        // -Punsigned builds unsigned APKs, for scripts/verify-reproducible.sh.
+        if (!project.hasProperty('unsigned')) {
+            configureEach { signingConfig = signingConfigs.simplexray }
         }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     externalNativeBuild {
         ndkBuild {
-            path "src/main/jni/Android.mk"
+            path = file('src/main/jni/Android.mk')
         }
     }
 
-    lintOptions {
-        checkReleaseBuilds false
-        // Or, if you prefer, you can continue to check for errors in release builds,
-        // but continue the build even when errors are found:
-        abortOnError false
+    // Every lint warning fails the build. A true false positive is suppressed
+    // where it occurs, with a comment saying why.
+    lint {
+        abortOnError = true
+        warningsAsErrors = true
+        checkReleaseBuilds = true
+        // Dependabot owns version bumps.
+        disable 'GradleDependency', 'NewerVersionAvailable', 'AndroidGradlePluginVersion'
     }
 
-    packagingOptions {
+    packaging {
         jniLibs {
-            useLegacyPackaging true
+            // libxray.so is an executable started with ProcessBuilder, so it
+            // has to be extracted to nativeLibraryDir.
+            useLegacyPackaging = true
         }
     }
 
+    // No dependency metadata blob (encrypted, unverifiable). The VCS info AGP
+    // adds is just the commit hash, which a rebuild from the tag reproduces.
     dependenciesInfo {
-        // Disables dependency metadata when building APKs.
         includeInApk = false
-        // Disables dependency metadata when building Android App Bundles.
         includeInBundle = false
     }
-    ndkVersion versionProps.NDK_VERSION
-    kotlinOptions {
-        jvmTarget = '1.8'
-    }
 
+    // Per-ABI APKs plus a universal one, as published on GitHub releases.
     splits {
         abi {
-            enable true
+            enable = true
             reset()
-            include "arm64-v8a", "x86_64"
-            universalApk true
+            include 'arm64-v8a', 'x86_64'
+            universalApk = true
         }
     }
 
-    applicationVariants.configureEach { variant ->
-        variant.outputs.each { output ->
-            def abiFilter = output.getFilter("ABI")
-            if (abiFilter != null) {
-                output.outputFileName = "simplexray-${abiFilter}.apk"
-            } else {
-                output.outputFileName = "simplexray-universal.apk"
-            }
-        }
+    testOptions {
+        // android.util.Log and friends return defaults instead of throwing.
+        unitTests.returnDefaultValues = true
     }
 
     buildFeatures {
-        compose true
-        buildConfig true
-    }
-
-    sourceSets {
-        main {
-            java {
-                srcDirs 'src/main/java', 'build/generated/source/proto/main/java'
-            }
-            kotlin {
-                srcDirs 'src/main/kotlin', 'build/generated/source/proto/main/grpckt'
-            }
-        }
+        compose = true
+        buildConfig = true
     }
 }
 
 dependencies {
-    implementation "io.grpc:grpc-okhttp:1.74.0"
-    implementation "io.grpc:grpc-protobuf:1.74.0"
-    implementation "io.grpc:grpc-stub:1.74.0"
-    implementation "io.grpc:grpc-kotlin-stub:1.4.3"
+    implementation libs.grpc.okhttp
+    implementation libs.grpc.protobuf.lite
+    implementation libs.grpc.stub
+    implementation libs.protobuf.javalite
 
-    implementation 'com.google.android.material:material:1.12.0'
-    implementation 'com.google.code.gson:gson:2.13.1'
-    implementation 'androidx.preference:preference-ktx:1.2.1'
-    implementation 'androidx.core:core-ktx:1.16.0'
+    implementation libs.material
+    implementation libs.gson
+    implementation libs.androidx.preference.ktx
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.lifecycle.viewmodel.compose
 
-    implementation platform('androidx.compose:compose-bom:2025.08.00')
-    implementation 'androidx.compose.ui:ui'
-    implementation 'androidx.compose.ui:ui-graphics'
-    implementation 'androidx.compose.material3:material3'
-    implementation 'androidx.compose.ui:ui-tooling-preview-android'
-    implementation 'androidx.activity:activity-compose'
-    implementation 'androidx.compose.runtime:runtime-livedata'
-    implementation 'androidx.navigation:navigation-compose-android:2.9.3'
+    implementation platform(libs.androidx.compose.bom)
+    implementation libs.androidx.compose.ui
+    implementation libs.androidx.compose.ui.graphics
+    implementation libs.androidx.compose.material3
+    implementation libs.androidx.compose.material.icons.core
+    implementation libs.androidx.compose.ui.tooling.preview
+    implementation libs.androidx.activity.compose
+    implementation libs.androidx.compose.runtime.livedata
+    implementation libs.androidx.navigation.compose
+    debugImplementation libs.androidx.compose.ui.tooling
 
-    implementation 'com.github.nanihadesuka:LazyColumnScrollbar:2.2.0'
-    implementation 'sh.calvin.reorderable:reorderable:2.5.1'
-    implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    implementation libs.lazycolumnscrollbar
+    implementation libs.reorderable
+    implementation libs.okhttp
+
+    testImplementation libs.junit
+    // The real org.json, in place of android.jar's stubs.
+    testImplementation libs.org.json
+}
+
+// ktfmtCheck / ktfmtFormat run the ktfmt CLI directly (kotlinlang style), so
+// the formatter version is pinned in the version catalog like everything else.
+configurations {
+    ktfmtCli
+}
+
+dependencies {
+    ktfmtCli libs.ktfmt
+}
+
+def ktfmtTask(String name, String description, List<String> flags) {
+    tasks.register(name, JavaExec) {
+        group = 'formatting'
+        setDescription(description)
+        classpath = configurations.ktfmtCli
+        mainClass = 'com.facebook.ktfmt.cli.Main'
+        def sources = fileTree('src') { include '**/*.kt' }
+        inputs.files(sources)
+        def paths = sources.files.collect { it.path }.sort()
+        args(['--kotlinlang-style'] + flags + paths)
+    }
+}
+
+ktfmtTask('ktfmtCheck', 'Fails if any Kotlin source is not ktfmt-formatted.',
+        ['--dry-run', '--set-exit-if-changed'])
+ktfmtTask('ktfmtFormat', 'Formats all Kotlin sources with ktfmt.', [])
+
+// signingProperties returns the keystore every build is signed with. Sources,
+// first match wins:
+//   1. SIMPLEXRAY_KEYSTORE + SIMPLEXRAY_KEYSTORE_PASSWORD (+ optional
+//      SIMPLEXRAY_KEY_ALIAS, SIMPLEXRAY_KEY_PASSWORD) in the environment;
+//   2. a properties file at $SIMPLEXRAY_SIGNING_PROPERTIES, else store.properties
+//      in the repo root (git-ignored), else ~/.config/simplexray/signing.properties,
+//      with keys storeFile, storePassword, keyAlias, keyPassword;
+//   3. the public debug.keystore in the repo root.
+// keyAlias defaults to "simplexray" and keyPassword to the store password.
+def signingProperties() {
+    def env = System.getenv()
+    def result
+    if (env.SIMPLEXRAY_KEYSTORE && env.SIMPLEXRAY_KEYSTORE_PASSWORD) {
+        result = [
+                storeFile    : env.SIMPLEXRAY_KEYSTORE,
+                storePassword: env.SIMPLEXRAY_KEYSTORE_PASSWORD,
+                keyAlias     : env.SIMPLEXRAY_KEY_ALIAS,
+                keyPassword  : env.SIMPLEXRAY_KEY_PASSWORD,
+        ]
+    } else {
+        def candidates = [
+                env.SIMPLEXRAY_SIGNING_PROPERTIES,
+                rootProject.file('store.properties').path,
+                "${System.getProperty('user.home')}/.config/simplexray/signing.properties",
+        ].findAll { it }
+        def f = candidates.collect { new File(it) }.find { it.isFile() }
+        if (f == null) {
+            return [
+                    storeFile    : rootProject.file('debug.keystore').path,
+                    storePassword: 'android',
+                    keyAlias     : 'androiddebugkey',
+                    keyPassword  : 'android',
+            ]
+        }
+        def props = new Properties()
+        f.withInputStream { props.load(it) }
+        if (!props.storeFile || !props.storePassword) {
+            throw new GradleException("${f} must set storeFile and storePassword")
+        }
+        // A relative storeFile is relative to the properties file.
+        def store = new File(props.storeFile)
+        result = [
+                storeFile    : store.absolute ? store.path : new File(f.absoluteFile.parentFile, props.storeFile).path,
+                storePassword: props.storePassword,
+                keyAlias     : props.keyAlias,
+                keyPassword  : props.keyPassword,
+        ]
+    }
+    result.keyAlias = result.keyAlias ?: 'simplexray'
+    result.keyPassword = result.keyPassword ?: result.storePassword
+    if (!new File(result.storeFile).isFile()) {
+        throw new GradleException("Keystore not found at ${result.storeFile}")
+    }
+    return result
 }

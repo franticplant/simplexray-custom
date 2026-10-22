@@ -1,17 +1,18 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.ui.screens
 
 import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -54,9 +55,9 @@ import com.simplexray.an.R
 import com.simplexray.an.common.formatBytes
 import com.simplexray.an.core.InstanceStatus
 import com.simplexray.an.viewmodel.MainViewModel
+import java.io.File
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
-import java.io.File
 
 private const val TAG = "ConfigScreen"
 
@@ -66,7 +67,7 @@ fun ConfigScreen(
     onEditConfigClick: (File) -> Unit,
     onDeleteConfigClick: (File, () -> Unit) -> Unit,
     mainViewModel: MainViewModel,
-    listState: LazyListState
+    listState: LazyListState,
 ) {
     val showDeleteDialog = remember { mutableStateOf<File?>(null) }
 
@@ -97,20 +98,17 @@ fun ConfigScreen(
     }
 
     val hapticFeedback = LocalHapticFeedback.current
-    val reorderableLazyListState = rememberReorderableLazyListState(listState) { from, to ->
-        mainViewModel.moveConfigFile(from.index, to.index)
-        hapticFeedback.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
-    }
+    val reorderableLazyListState =
+        rememberReorderableLazyListState(listState) { from, to ->
+            mainViewModel.moveConfigFile(from.index, to.index)
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+        }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-    ) {
+    Column(modifier = Modifier.fillMaxSize()) {
         if (files.isEmpty()) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize(),
-                contentAlignment = Alignment.Center
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     stringResource(R.string.no_config_files),
@@ -121,10 +119,9 @@ fun ConfigScreen(
             }
         } else {
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxHeight(),
+                modifier = Modifier.fillMaxHeight(),
                 contentPadding = PaddingValues(bottom = 10.dp, top = 10.dp),
-                state = listState
+                state = listState,
             ) {
                 items(files, key = { it }) { file ->
                     ReorderableItem(reorderableLazyListState, key = file) {
@@ -133,55 +130,64 @@ fun ConfigScreen(
                         val isRunning = activeInfo?.status == InstanceStatus.RUNNING
 
                         Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp)
-                                .clip(MaterialTheme.shapes.extraLarge)
-                                .clickable {
-                                    mainViewModel.updateSelectedConfigFile(file)
-                                    if (isServiceEnabled) {
-                                        Log.d(
-                                            TAG,
-                                            "Config selected while service is running, requesting reload."
-                                        )
-                                        onReloadConfig()
-                                    }
-                                },
-                            colors = CardDefaults.cardColors(
-                                containerColor = if (isSelected) MaterialTheme.colorScheme.secondaryContainer
-                                else MaterialTheme.colorScheme.surfaceContainerHighest
-                            ),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                            modifier =
+                                Modifier.fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                                    .clip(MaterialTheme.shapes.extraLarge)
+                                    .clickable {
+                                        mainViewModel.updateSelectedConfigFile(file)
+                                        if (isServiceEnabled) {
+                                            Log.d(
+                                                TAG,
+                                                "Config selected while service is running, requesting reload.",
+                                            )
+                                            onReloadConfig()
+                                        }
+                                    },
+                            colors =
+                                CardDefaults.cardColors(
+                                    containerColor =
+                                        if (isSelected) MaterialTheme.colorScheme.secondaryContainer
+                                        else MaterialTheme.colorScheme.surfaceContainerHighest
+                                ),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
                         ) {
                             Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp)
-                                    .longPressDraggableHandle()
+                                modifier =
+                                    Modifier.fillMaxWidth()
+                                        .padding(16.dp)
+                                        .longPressDraggableHandle()
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically,
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             file.name.removeSuffix(".json"),
                                             style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.SemiBold
+                                            fontWeight = FontWeight.SemiBold,
                                         )
 
                                         Row(
                                             modifier = Modifier.padding(top = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                                            verticalAlignment = Alignment.CenterVertically,
                                         ) {
                                             if (isSelected) {
                                                 AssistChip(
                                                     onClick = {},
-                                                    label = { Text("Primary VPN", fontSize = 11.sp) },
-                                                    colors = AssistChipDefaults.assistChipColors(
-                                                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                                        labelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                                    )
+                                                    label = {
+                                                        Text("Primary VPN", fontSize = 11.sp)
+                                                    },
+                                                    colors =
+                                                        AssistChipDefaults.assistChipColors(
+                                                            containerColor =
+                                                                MaterialTheme.colorScheme
+                                                                    .primaryContainer,
+                                                            labelColor =
+                                                                MaterialTheme.colorScheme
+                                                                    .onPrimaryContainer,
+                                                        ),
                                                 )
                                                 Spacer(modifier = Modifier.width(6.dp))
                                             }
@@ -191,23 +197,29 @@ fun ConfigScreen(
                                                     onClick = {},
                                                     label = {
                                                         Text(
-                                                            "Active (Port ${activeInfo?.apiPort ?: 0})",
-                                                            fontSize = 11.sp
+                                                            "Active (Port ${activeInfo.apiPort})",
+                                                            fontSize = 11.sp,
                                                         )
                                                     },
-                                                    colors = AssistChipDefaults.assistChipColors(
-                                                        containerColor = Color(0xFF2E7D32),
-                                                        labelColor = Color.White
-                                                    )
+                                                    colors =
+                                                        AssistChipDefaults.assistChipColors(
+                                                            containerColor = Color(0xFF2E7D32),
+                                                            labelColor = Color.White,
+                                                        ),
                                                 )
                                             } else {
                                                 AssistChip(
                                                     onClick = {},
                                                     label = { Text("Stopped", fontSize = 11.sp) },
-                                                    colors = AssistChipDefaults.assistChipColors(
-                                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
+                                                    colors =
+                                                        AssistChipDefaults.assistChipColors(
+                                                            containerColor =
+                                                                MaterialTheme.colorScheme
+                                                                    .surfaceVariant,
+                                                            labelColor =
+                                                                MaterialTheme.colorScheme
+                                                                    .onSurfaceVariant,
+                                                        ),
                                                 )
                                             }
                                         }
@@ -217,35 +229,34 @@ fun ConfigScreen(
                                         checked = isRunning,
                                         onCheckedChange = {
                                             mainViewModel.toggleInstance(file.absolutePath)
-                                        }
+                                        },
                                     )
 
                                     IconButton(onClick = { onEditConfigClick(file) }) {
                                         Icon(
                                             painterResource(R.drawable.edit),
-                                            contentDescription = "Edit"
+                                            contentDescription = "Edit",
                                         )
                                     }
 
                                     IconButton(onClick = { showDeleteDialog.value = file }) {
                                         Icon(
                                             painterResource(R.drawable.delete),
-                                            contentDescription = "Delete"
+                                            contentDescription = "Delete",
                                         )
                                     }
                                 }
 
                                 if (activeInfo?.status == InstanceStatus.RUNNING) {
                                     Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(top = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Text(
-                                            text = "Traffic: ↑ ${formatBytes(activeInfo.uplink)}  ↓ ${formatBytes(activeInfo.downlink)}",
+                                            text =
+                                                "Traffic: ↑ ${formatBytes(activeInfo.uplink)}  ↓ ${formatBytes(activeInfo.downlink)}",
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     }
                                 }
@@ -263,13 +274,15 @@ fun ConfigScreen(
             title = { Text(stringResource(R.string.delete_config)) },
             text = { Text(fileToDelete.name) },
             confirmButton = {
-                TextButton(onClick = {
-                    showDeleteDialog.value = null
-                    onDeleteConfigClick(fileToDelete) {
-                        mainViewModel.refreshConfigFileList()
-                        mainViewModel.updateSelectedConfigFile(null)
+                TextButton(
+                    onClick = {
+                        showDeleteDialog.value = null
+                        onDeleteConfigClick(fileToDelete) {
+                            mainViewModel.refreshConfigFileList()
+                            mainViewModel.updateSelectedConfigFile(null)
+                        }
                     }
-                }) {
+                ) {
                     Text(stringResource(R.string.confirm))
                 }
             },
@@ -277,7 +290,7 @@ fun ConfigScreen(
                 TextButton(onClick = { showDeleteDialog.value = null }) {
                     Text(stringResource(R.string.cancel))
                 }
-            }
+            },
         )
     }
 }

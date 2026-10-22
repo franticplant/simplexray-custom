@@ -1,16 +1,12 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.core
 
 import android.content.Context
 import android.util.Log
 import com.simplexray.an.common.ConfigUtils
-import com.simplexray.an.common.CoreStatsClient
-import com.simplexray.an.prefs.Preferences
 import com.simplexray.an.service.TProxyService
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -18,6 +14,11 @@ import java.io.InterruptedIOException
 import java.net.ServerSocket
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.Volatile
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 private const val TAG = "XrayInstanceManager"
 
@@ -26,23 +27,13 @@ class RunningInstance(
     val configName: String,
     val isPrimaryVpn: Boolean,
     val apiAddress: String,
-    val apiPort: Int
+    val apiPort: Int,
 ) {
-    @Volatile
-    var process: Process? = null
+    @Volatile var process: Process? = null
 
-    @Volatile
-    var status: InstanceStatus = InstanceStatus.STARTING
+    @Volatile var status: InstanceStatus = InstanceStatus.STARTING
 
-    @Volatile
-    var errorMessage: String? = null
-
-    var statsClient: CoreStatsClient? = null
-    var uplink: Long = 0
-    var downlink: Long = 0
-    var numGoroutine: Int = 0
-    var alloc: Long = 0
-    var uptime: Int = 0
+    @Volatile var errorMessage: String? = null
 
     val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
@@ -54,18 +45,20 @@ class RunningInstance(
             apiPort = apiPort,
             isPrimaryVpn = isPrimaryVpn,
             status = status,
-            uplink = uplink,
-            downlink = downlink,
-            numGoroutine = numGoroutine,
-            alloc = alloc,
-            uptime = uptime,
-            errorMessage = errorMessage
+            errorMessage = errorMessage,
         )
     }
 }
 
 object XrayInstanceManager {
     private val instances = ConcurrentHashMap<String, RunningInstance>()
+
+    // Set by startInstance; every state change is published to InstanceRegistry with it.
+    @Volatile private var appContext: Context? = null
+
+    private fun publish() {
+        appContext?.let { InstanceRegistry.publish(it, getAllInstanceInfos()) }
+    }
 
     fun getRunningInstance(configPath: String): RunningInstance? = instances[configPath]
 
@@ -78,21 +71,21 @@ object XrayInstanceManager {
     }
 
     private fun findAvailablePort(excludedPorts: Set<Int>): Int? {
-        (10000..65535)
-            .shuffled()
-            .forEach { port ->
-                if (port in excludedPorts) return@forEach
-                runCatching {
-                    ServerSocket(port).use { socket ->
-                        socket.reuseAddress = true
-                    }
-                    port
-                }.onFailure {
+        (10000..65535).shuffled().forEach { port ->
+            if (port in excludedPorts) return@forEach
+            runCatching {
+                ServerSocket(port).use { socket ->
+                    socket.reuseAddress = true
+                }
+                port
+            }
+                .onFailure {
                     Log.d(TAG, "Port $port unavailable: ${it.message}")
-                }.onSuccess {
+                }
+                .onSuccess {
                     return port
                 }
-            }
+        }
         return null
     }
 
@@ -100,8 +93,9 @@ object XrayInstanceManager {
         context: Context,
         configPath: String,
         isPrimaryVpn: Boolean,
-        onLogLine: (tag: String, line: String) -> Unit
+        onLogLine: (tag: String, line: String) -> Unit,
     ): Boolean {
+        appContext = context.applicationContext
         val configFile = File(configPath)
         if (!configFile.exists()) {
             Log.e(TAG, "Config file does not exist: $configPath")
@@ -115,38 +109,41 @@ object XrayInstanceManager {
         val configContent = configFile.readText()
         val extractedPorts = ConfigUtils.extractPortsFromJson(configContent)
 
-        val apiPort = findAvailablePort(extractedPorts) ?: run {
-            Log.e(TAG, "Failed to find available API port for $configName")
-            return false
-        }
+        val apiPort =
+            findAvailablePort(extractedPorts)
+                ?: run {
+                    Log.e(TAG, "Failed to find available API port for $configName")
+                    return false
+                }
 
         val octet2 = (0..255).random()
         val octet3 = (0..255).random()
         val octet4 = (1..254).random()
         val apiAddress = "127.$octet2.$octet3.$octet4"
 
-        val runningInstance = RunningInstance(
-            configPath = configPath,
-            configName = configName,
-            isPrimaryVpn = isPrimaryVpn,
-            apiAddress = apiAddress,
-            apiPort = apiPort
-        )
+        val runningInstance =
+            RunningInstance(
+                configPath = configPath,
+                configName = configName,
+                isPrimaryVpn = isPrimaryVpn,
+                apiAddress = apiAddress,
+                apiPort = apiPort,
+            )
 
         instances[configPath] = runningInstance
+        publish()
 
         runningInstance.scope.launch {
             try {
-                Log.d(TAG, "Launching Xray core instance for $configName on API $apiAddress:$apiPort")
+                Log.d(
+                    TAG,
+                    "Launching Xray core instance for $configName on API $apiAddress:$apiPort",
+                )
                 val libraryDir = TProxyService.getNativeLibraryDir(context) ?: return@launch
                 val xrayExecutable = "$libraryDir/libxray.so"
 
-                val prefs = Preferences(context)
-                // Set temporary API port and address in prefs for ConfigUtils injection
-                prefs.apiPort = apiPort
-                prefs.apiAddress = apiAddress
-
-                val injectedConfig = ConfigUtils.injectStatsService(prefs, configContent)
+                val injectedConfig =
+                    ConfigUtils.injectStatsService(apiAddress, apiPort, configContent)
 
                 val filesDir = context.filesDir
                 val processBuilder = ProcessBuilder(xrayExecutable)
@@ -158,6 +155,7 @@ object XrayInstanceManager {
                 val process = processBuilder.start()
                 runningInstance.process = process
                 runningInstance.status = InstanceStatus.RUNNING
+                publish()
 
                 // Write config to process stdin
                 process.outputStream.use { os ->
@@ -181,43 +179,14 @@ object XrayInstanceManager {
                 runningInstance.errorMessage = e.message
             } finally {
                 Log.d(TAG, "Instance $configName process terminated.")
-                runningInstance.status = InstanceStatus.STOPPED
-                runningInstance.statsClient?.close()
-                runningInstance.statsClient = null
+                if (runningInstance.status != InstanceStatus.ERROR) {
+                    runningInstance.status = InstanceStatus.STOPPED
+                }
+                publish()
             }
         }
 
         return true
-    }
-
-    suspend fun updateStats(configPath: String) {
-        val instance = instances[configPath] ?: return
-        if (instance.status != InstanceStatus.RUNNING) return
-
-        if (instance.statsClient == null) {
-            instance.statsClient = CoreStatsClient.create(instance.apiAddress, instance.apiPort)
-        }
-
-        val client = instance.statsClient ?: return
-        val stats = client.getSystemStats()
-        val traffic = client.getTraffic()
-
-        if (stats != null) {
-            instance.numGoroutine = stats.numGoroutine
-            instance.alloc = stats.alloc
-            instance.uptime = stats.uptime
-        }
-
-        if (traffic != null) {
-            instance.uplink = traffic.uplink
-            instance.downlink = traffic.downlink
-        }
-    }
-
-    suspend fun updateAllStats() {
-        instances.keys.forEach { path ->
-            updateStats(path)
-        }
     }
 
     fun stopInstance(configPath: String) {
@@ -226,9 +195,8 @@ object XrayInstanceManager {
             instance.status = InstanceStatus.STOPPED
             instance.process?.destroy()
             instance.process = null
-            instance.statsClient?.close()
-            instance.statsClient = null
             instance.scope.cancel()
+            publish()
         }
     }
 

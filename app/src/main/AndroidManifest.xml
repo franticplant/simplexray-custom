@@ -26,12 +26,12 @@
         android:theme="@style/Theme.Material3.DynamicColors.DayNight.NoActionBar">
         <provider
             android:name="com.simplexray.an.prefs.PrefsProvider"
-            android:authorities="com.simplexray.an.prefsprovider"
+            android:authorities="${applicationId}.prefsprovider"
             android:exported="false"
             android:grantUriPermissions="true" />
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="com.simplexray.an.fileprovider"
+            android:authorities="${applicationId}.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

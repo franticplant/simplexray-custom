@@ -1,0 +1,98 @@
+# Everything a SimpleXray build needs, shared by the CI and release workflows:
+# JDK, Gradle, the pinned NDK, Go, the geo data and Xray-core built from
+# source. Versions come from version.properties; the expensive outputs (NDK,
+# Xray-core binaries, geo data) are cached per version.
+#
+# The calling workflow checks the repository out with submodules first.
+name: Set up SimpleXray build
+description: JDK, Gradle, NDK, Go, geo data and Xray-core.
+
+outputs:
+  xray-version:
+    description: The Xray-core tag built into the APK.
+    value: ${{ steps.versions.outputs.xray }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read versions
+      id: versions
+      shell: bash
+      run: |
+        prop() { grep "^$1=" version.properties | cut -d= -f2- | tr -d '\r'; }
+        {
+          echo "xray=$(prop XRAY_CORE_VERSION)"
+          echo "go=$(prop GO_VERSION)"
+          echo "ndk=$(prop NDK_VERSION)"
+          echo "geoip=$(prop GEOIP_VERSION)"
+          echo "geosite=$(prop GEOSITE_VERSION)"
+        } >> "$GITHUB_OUTPUT"
+
+    - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+      with:
+        distribution: temurin
+        java-version: "21"
+
+    - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      with:
+        cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+    - name: Cache Android NDK
+      id: ndk-cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: /usr/local/lib/android/sdk/ndk/${{ steps.versions.outputs.ndk }}
+        key: android-ndk-${{ runner.os }}-${{ steps.versions.outputs.ndk }}
+
+    - name: Install Android SDK packages
+      shell: bash
+      env:
+        NDK: ${{ steps.versions.outputs.ndk }}
+      run: |
+        compile=$(grep -oP 'compileSdk\s*=\s*\K[0-9.]+' app/build.gradle)
+        # Platforms from API 37 on are versioned major.minor (android-37.0).
+        [[ $compile == *.* || $compile -lt 37 ]] || compile="$compile.0"
+        pkgs=("platforms;android-${compile}")
+        if [[ ! -d "$ANDROID_HOME/ndk/$NDK" ]]; then
+          pkgs+=("ndk;$NDK")
+        fi
+        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "${pkgs[@]}" > /dev/null
+        # Otherwise tools could pick whichever NDK is newest on the image.
+        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK" >> "$GITHUB_ENV"
+
+    - name: Cache geo data
+      id: geo-cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          app/src/main/assets/geoip.dat
+          app/src/main/assets/geosite.dat
+        key: geodata-${{ steps.versions.outputs.geoip }}-${{ steps.versions.outputs.geosite }}
+
+    - name: Download geo data
+      if: steps.geo-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: scripts/fetch-geodata.sh
+
+    # The binaries are a pure function of these inputs (the build is
+    # reproducible), so a cache hit gives the same bytes a rebuild would.
+    - name: Cache Xray-core binaries
+      id: xray-cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: app/src/main/jniLibs
+        key: xray-${{ steps.versions.outputs.xray }}-go${{ steps.versions.outputs.go }}-ndk${{ steps.versions.outputs.ndk }}-${{ hashFiles('scripts/build-xray.sh', 'app/build.gradle') }}
+
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      if: steps.xray-cache.outputs.cache-hit != 'true'
+      with:
+        go-version: ${{ steps.versions.outputs.go }}
+        cache: false
+
+    - name: Build Xray-core
+      if: steps.xray-cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        GOTOOLCHAIN: local
+      run: scripts/build-xray.sh

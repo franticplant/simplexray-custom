@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.ui.navigation
 
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -25,26 +28,24 @@ import com.simplexray.an.ui.screens.MainScreen
 import com.simplexray.an.viewmodel.MainViewModel
 
 @Composable
-fun AppNavHost(
-    mainViewModel: MainViewModel
-) {
+fun AppNavHost(mainViewModel: MainViewModel) {
     val navController = rememberNavController()
 
     NavHost(
         navController = navController,
-        startDestination = ROUTE_MAIN
+        startDestination = ROUTE_MAIN,
     ) {
         composable(
             route = ROUTE_MAIN,
             enterTransition = { EnterTransition.None },
             exitTransition = { exitTransition() },
             popEnterTransition = { popEnterTransition() },
-            popExitTransition = { ExitTransition.None }
+            popExitTransition = { ExitTransition.None },
         ) {
             MainScreen(
                 mainViewModel = mainViewModel,
                 appNavController = navController,
-                snackbarHostState = remember { SnackbarHostState() }
+                snackbarHostState = remember { SnackbarHostState() },
             )
         }
 
@@ -53,11 +54,11 @@ fun AppNavHost(
             enterTransition = { enterTransition() },
             exitTransition = { exitTransition() },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { popExitTransition() }
+            popExitTransition = { popExitTransition() },
         ) {
             AppListScreen(
                 viewModel = mainViewModel.appListViewModel,
-                onBackClick = { navController.popBackStack() }
+                onBackClick = { navController.popBackStack() },
             )
         }
 
@@ -66,12 +67,12 @@ fun AppNavHost(
             enterTransition = { enterTransition() },
             exitTransition = { exitTransition() },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { popExitTransition() }
+            popExitTransition = { popExitTransition() },
         ) {
             ConfigEditScreen(
                 onBackClick = { navController.popBackStack() },
                 snackbarHostState = remember { SnackbarHostState() },
-                viewModel = mainViewModel.configEditViewModel
+                viewModel = mainViewModel.configEditViewModel,
             )
         }
     }
@@ -80,28 +81,35 @@ fun AppNavHost(
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.enterTransition() =
     scaleIn(
         initialScale = 0.8f,
-        animationSpec = tween(300, easing = FastOutSlowInEasing)
-    ) + slideIntoContainer(
-        towards = AnimatedContentTransitionScope.SlideDirection.Start,
-        animationSpec = tween(400, easing = FastOutSlowInEasing)
-    ) + fadeIn(animationSpec = tween(400))
+        animationSpec = tween(300, easing = FastOutSlowInEasing),
+    ) +
+        slideIntoContainer(
+            towards = AnimatedContentTransitionScope.SlideDirection.Start,
+            animationSpec = tween(400, easing = FastOutSlowInEasing),
+        ) +
+        fadeIn(animationSpec = tween(400))
 
 private fun exitTransition() =
-    fadeOut(animationSpec = tween(300)) + scaleOut(
-        targetScale = 0.9f,
-        animationSpec = tween(400, easing = FastOutSlowInEasing)
-    )
+    fadeOut(animationSpec = tween(300)) +
+        scaleOut(
+            targetScale = 0.9f,
+            animationSpec = tween(400, easing = FastOutSlowInEasing),
+        )
 
-private fun popEnterTransition() = fadeIn(animationSpec = tween(400)) + scaleIn(
-    initialScale = 0.9f,
-    animationSpec = tween(400, easing = FastOutSlowInEasing)
-)
+private fun popEnterTransition() =
+    fadeIn(animationSpec = tween(400)) +
+        scaleIn(
+            initialScale = 0.9f,
+            animationSpec = tween(400, easing = FastOutSlowInEasing),
+        )
 
 private fun AnimatedContentTransitionScope<NavBackStackEntry>.popExitTransition() =
     scaleOut(
         targetScale = 0.8f,
-        animationSpec = tween(300, easing = FastOutSlowInEasing)
-    ) + slideOutOfContainer(
-        towards = AnimatedContentTransitionScope.SlideDirection.End,
-        animationSpec = tween(300, easing = FastOutSlowInEasing)
-    ) + fadeOut(animationSpec = tween(400))
+        animationSpec = tween(300, easing = FastOutSlowInEasing),
+    ) +
+        slideOutOfContainer(
+            towards = AnimatedContentTransitionScope.SlideDirection.End,
+            animationSpec = tween(300, easing = FastOutSlowInEasing),
+        ) +
+        fadeOut(animationSpec = tween(400))

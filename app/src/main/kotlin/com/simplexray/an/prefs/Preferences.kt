@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.prefs
 
 import android.content.ContentResolver
@@ -22,24 +25,30 @@ class Preferences(context: Context) {
     private fun getPrefData(key: String): Pair<String?, String?> {
         val uri = PrefsContract.PrefsEntry.CONTENT_URI.buildUpon().appendPath(key).build()
         try {
-            contentResolver.query(
-                uri, arrayOf(
-                    PrefsContract.PrefsEntry.COLUMN_PREF_VALUE,
-                    PrefsContract.PrefsEntry.COLUMN_PREF_TYPE
-                ), null, null, null
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val valueColumnIndex =
-                        cursor.getColumnIndex(PrefsContract.PrefsEntry.COLUMN_PREF_VALUE)
-                    val typeColumnIndex =
-                        cursor.getColumnIndex(PrefsContract.PrefsEntry.COLUMN_PREF_TYPE)
-                    val value =
-                        if (valueColumnIndex != -1) cursor.getString(valueColumnIndex) else null
-                    val type =
-                        if (typeColumnIndex != -1) cursor.getString(typeColumnIndex) else null
-                    return Pair(value, type)
+            contentResolver
+                .query(
+                    uri,
+                    arrayOf(
+                        PrefsContract.PrefsEntry.COLUMN_PREF_VALUE,
+                        PrefsContract.PrefsEntry.COLUMN_PREF_TYPE,
+                    ),
+                    null,
+                    null,
+                    null,
+                )
+                ?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val valueColumnIndex =
+                            cursor.getColumnIndex(PrefsContract.PrefsEntry.COLUMN_PREF_VALUE)
+                        val typeColumnIndex =
+                            cursor.getColumnIndex(PrefsContract.PrefsEntry.COLUMN_PREF_TYPE)
+                        val value =
+                            if (valueColumnIndex != -1) cursor.getString(valueColumnIndex) else null
+                        val type =
+                            if (typeColumnIndex != -1) cursor.getString(typeColumnIndex) else null
+                        return Pair(value, type)
+                    }
                 }
-            }
         } catch (e: Exception) {
             Log.e(TAG, "Error reading preference data for key: $key", e)
         }
@@ -263,8 +272,9 @@ class Preferences(context: Context) {
         }
 
     var connectivityTestTarget: String
-        get() = getPrefData(CONNECTIVITY_TEST_TARGET).first
-            ?: context1.getString(R.string.connectivity_test_url)
+        get() =
+            getPrefData(CONNECTIVITY_TEST_TARGET).first
+                ?: context1.getString(R.string.connectivity_test_url)
         set(value) {
             setValueInProvider(CONNECTIVITY_TEST_TARGET, value)
         }

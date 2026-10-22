@@ -1,3 +1,6 @@
+// Copyright (c) SimpleXray contributors
+// SPDX-License-Identifier: MPL-2.0
+
 package com.simplexray.an.common
 
 enum class ThemeMode(val value: String) {
@@ -6,10 +9,11 @@ enum class ThemeMode(val value: String) {
     Auto("Auto");
 
     companion object {
-        fun fromString(value: String): ThemeMode = when (value) {
-            "Light" -> Light
-            "Dark" -> Dark
-            else -> Auto
-        }
+        fun fromString(value: String): ThemeMode =
+            when (value) {
+                "Light" -> Light
+                "Dark" -> Dark
+                else -> Auto
+            }
     }
 }

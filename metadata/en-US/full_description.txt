@@ -1,9 +1,11 @@
-SimpleXray is a high-performance proxy client for Android, built upon the robust Xray-core.
+SimpleXray is a proxy client for Android built on Xray-core. It runs the official Xray-core executable as separate processes, rather than linking it into the app.
 
-It features an innovative approach: directly executing the official Xray-core binary. This method isolates core logic from the app layer, boosting stability and maximizing Xray-core's native performance. SimpleXray aims to provide a stable and efficient network experience.
+Features
 
-Key Features
+- Xray-core in its own process: a core crash cannot take the app down, and the core runs at native speed.
+- Several instances at once: one profile carries the VPN, and others run as local SOCKS/HTTP proxies. Each has its own statistics and its own start, stop and restart controls.
+- Fast tunnel: hev-socks5-tunnel carries the device's traffic into Xray with low latency.
+- Per-app routing, live traffic graphs, and import from share links.
+- Material 3 interface with themed icons.
 
-- Enhanced Stability: By running Xray-core as an independent process, SimpleXray avoids common stability issues, significantly improving reliability.
-- High Performance: Leverages Xray-core's native speed and efficient tunneling for low latency and high throughput.
-- User-Friendly: Offers a clean, intuitive UI and simplified setup, making it easy for users to configure and manage connections.
+This is an independently maintained fork of lhear/SimpleXray. Releases are signed, reproducible, and carry build-provenance attestations.
