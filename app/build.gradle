@@ -47,6 +47,12 @@ android {
             ndkBuild {
                 arguments "APP_CFLAGS+=-DPKGNAME=com/simplexray/an/service -ffile-prefix-map=${rootDir}=."
                 arguments 'APP_LDFLAGS+=-Wl,--build-id=none'
+                // hev-socks5-tunnel and its third-party libraries list their
+                // sources with $(wildcard), which glibc orders by the locale's
+                // collation, so the link order (and the binary) differed
+                // between en_US and C locales. A command-line variable
+                // overrides their rwildcard; $(sort) compares bytes.
+                arguments 'rwildcard=$(sort $(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2) $(filter $(subst *,%,$2),$d)))'
             }
         }
     }
