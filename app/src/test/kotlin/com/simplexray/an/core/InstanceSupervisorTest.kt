@@ -3,7 +3,14 @@
 
 package com.simplexray.an.core
 
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -23,8 +30,8 @@ class InstanceSupervisorTest {
         script: String,
         policy: RestartPolicy = RestartPolicy(),
         probe: (String, Int) -> Boolean = { _, _ -> true },
-    ): InstanceSupervisor {
-        val launcher =
+    ): InstanceSupervisor =
+        supervisorWith(
             object : InstanceSupervisor.Launcher {
                 override fun configPorts(configPath: String) = emptySet<Int>()
 
@@ -32,8 +39,17 @@ class InstanceSupervisorTest {
                     ProcessBuilder("sh", "-c", script).redirectErrorStream(true).start().also {
                         launched += it
                     }
-            }
-        return InstanceSupervisor(
+            },
+            policy,
+            probe,
+        )
+
+    private fun supervisorWith(
+        launcher: InstanceSupervisor.Launcher,
+        policy: RestartPolicy = RestartPolicy(),
+        probe: (String, Int) -> Boolean = { _, _ -> true },
+    ): InstanceSupervisor =
+        InstanceSupervisor(
                 launcher,
                 onLog = { _, line -> logs += line },
                 onChange = { infos -> infos.firstOrNull()?.let { statuses += it.status } },
@@ -41,7 +57,6 @@ class InstanceSupervisorTest {
                 probe = probe,
             )
             .also { supervisor = it }
-    }
 
     @After
     fun tearDown() {
@@ -158,6 +173,43 @@ class InstanceSupervisorTest {
     }
 
     @Test
+    fun stoppingWhileXrayOutputIsBeingReadDoesNotThrow() {
+        // Android reports a stream closed by destroy() as InterruptedIOException, in the thread
+        // blocked reading the process's output. Stopping used to let that escape and kill the
+        // service process.
+        val stream = BlockingInputStream()
+        val process = FakeProcess(stream)
+        val failures = Collections.synchronizedList(mutableListOf<Throwable>())
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { _, e -> failures += e }
+        try {
+            val s =
+                supervisorWith(
+                    object : InstanceSupervisor.Launcher {
+                        override fun configPorts(configPath: String) = emptySet<Int>()
+
+                        override fun launch(
+                            configPath: String,
+                            apiAddress: String,
+                            apiPort: Int,
+                        ) = process.also { launched += it }
+                    }
+                )
+            s.start("/configs/a.json", isPrimaryVpn = true)
+            s.awaitInstance { it?.status == InstanceStatus.RUNNING }
+            assertTrue("log reader never started", stream.awaitReading())
+
+            s.stop("/configs/a.json")
+            s.awaitInstance { it == null }
+            Thread.sleep(200)
+
+            assertTrue("uncaught exception: $failures", failures.isEmpty())
+        } finally {
+            Thread.setDefaultUncaughtExceptionHandler(previousHandler)
+        }
+    }
+
+    @Test
     fun restartPolicy() {
         val policy = RestartPolicy(stableAfterMs = 5_000, resetAfterMs = 60_000, maxRestarts = 3)
 
@@ -187,5 +239,50 @@ class InstanceSupervisorTest {
             "Xray exited with code 1: [Error] failed to dial",
             InstanceSupervisor.describeExit(1, listOf("[Error] failed to dial", "shutting down")),
         )
+    }
+
+    /** Blocks in read() until closed, then fails the way Android does when a stream is closed. */
+    private class BlockingInputStream : InputStream() {
+        private val reading = CountDownLatch(1)
+        private val closed = CountDownLatch(1)
+
+        fun awaitReading(): Boolean = reading.await(5, TimeUnit.SECONDS)
+
+        fun closeStream() = closed.countDown()
+
+        override fun read(): Int {
+            reading.countDown()
+            closed.await()
+            throw IOException("read interrupted by close() on another thread")
+        }
+    }
+
+    private class FakeProcess(private val stream: BlockingInputStream) : Process() {
+        @Volatile private var destroyed = false
+
+        override fun getOutputStream(): OutputStream = ByteArrayOutputStream()
+
+        override fun getInputStream(): InputStream = stream
+
+        override fun getErrorStream(): InputStream = ByteArrayInputStream(ByteArray(0))
+
+        override fun waitFor(): Int {
+            while (!destroyed) Thread.sleep(10)
+            return 0
+        }
+
+        override fun waitFor(timeout: Long, unit: TimeUnit): Boolean {
+            waitFor()
+            return true
+        }
+
+        override fun exitValue(): Int = if (destroyed) 0 else throw IllegalThreadStateException()
+
+        override fun destroy() {
+            destroyed = true
+            stream.closeStream()
+        }
+
+        override fun isAlive(): Boolean = !destroyed
     }
 }

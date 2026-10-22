@@ -4,6 +4,7 @@
 package com.simplexray.an.core
 
 import java.io.File
+import java.io.IOException
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -92,7 +93,9 @@ class InstanceSupervisor(
     private fun stopNow(configPath: String) {
         val instance = synchronized(instances) { instances[configPath] } ?: return
         instance.stopping = true
-        instance.job.cancel()
+        // Destroy before cancelling the job: destroying closes the process's output stream, which
+        // makes the blocked log reader return, and only then is the job free to be cancelled (it
+        // may be waiting out a restart delay instead).
         instance.process?.let { p ->
             p.destroy()
             if (!p.waitFor(STOP_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
@@ -100,6 +103,7 @@ class InstanceSupervisor(
                 p.waitFor(STOP_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             }
         }
+        instance.job.cancel()
         synchronized(instances) { instances.remove(configPath) }
         publish()
     }
@@ -122,6 +126,7 @@ class InstanceSupervisor(
             instance.status = InstanceStatus.RESTARTING
             publish()
             delay(delayMs)
+            if (instance.stopping) return
         }
     }
 
@@ -165,10 +170,19 @@ class InstanceSupervisor(
 
         val recent = ArrayDeque<String>()
         withContext(Dispatchers.IO) {
-            process.inputStream.bufferedReader().forEachLine { line ->
-                recent.addLast(line)
-                if (recent.size > RECENT_LINES) recent.removeFirst()
-                onLog(instance.configName, line)
+            try {
+                process.inputStream.bufferedReader().forEachLine { line ->
+                    recent.addLast(line)
+                    if (recent.size > RECENT_LINES) recent.removeFirst()
+                    onLog(instance.configName, line)
+                }
+            } catch (e: IOException) {
+                // Closing the process (on stop or on the startup timeout) closes its output stream
+                // under the reader; Android reports that as InterruptedIOException. The exit code
+                // and the lines read so far are still valid.
+                if (!instance.stopping) {
+                    onLog(instance.configName, "Could not read Xray output: ${e.message}")
+                }
             }
         }
         val code = process.waitFor()
