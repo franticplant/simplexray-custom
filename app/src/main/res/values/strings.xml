@@ -129,6 +129,35 @@
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
     <string name="auto">Auto</string>
+    <string name="dashboard_global_stats">Global System Stats</string>
+    <string name="dashboard_running_instances">Running Xray Instances</string>
+    <string name="dashboard_no_instances">No Xray core instances currently active.</string>
+    <string name="stats_speed">Speed</string>
+    <string name="stats_traffic">Traffic</string>
+    <string name="instance_name_vpn">%1$s (VPN)</string>
+    <string name="instance_api" translatable="false">API %1$s:%2$d</string>
+    <string name="stop">Stop</string>
+    <string name="primary_vpn">Primary VPN</string>
+    <string name="status_stopped">Stopped</string>
+    <string name="status_starting">Starting</string>
+    <string name="status_starting_detail">Starting…</string>
+    <string name="status_running">Running</string>
+    <string name="status_running_no_stats">Running, stats API not answering</string>
+    <string name="status_restarting">Restarting</string>
+    <string name="status_restarting_detail">Crashed, restarting (%1$d)…</string>
+    <string name="status_failed">Failed</string>
+    <string name="edit">Edit</string>
+    <string name="delete">Delete</string>
+    <string name="paste">Paste</string>
+    <string name="url" translatable="false">URL</string>
+    <plurals name="dashboard_active_instances">
+        <item quantity="one">%d Active Instance</item>
+        <item quantity="other">%d Active Instances</item>
+    </plurals>
+    <plurals name="status_running_restarted">
+        <item quantity="one">Running (restarted %d×)</item>
+        <item quantity="other">Running (restarted %d×)</item>
+    </plurals>
     <plurals name="notification_more_instances">
         <item quantity="one">%1$s · %2$d more</item>
         <item quantity="other">%1$s · %2$d more</item>

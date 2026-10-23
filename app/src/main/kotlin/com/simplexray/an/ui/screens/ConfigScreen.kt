@@ -174,7 +174,10 @@ fun ConfigScreen(
                                                 AssistChip(
                                                     onClick = {},
                                                     label = {
-                                                        Text("Primary VPN", fontSize = 11.sp)
+                                                        Text(
+                                                            stringResource(R.string.primary_vpn),
+                                                            fontSize = 11.sp,
+                                                        )
                                                     },
                                                     colors =
                                                         AssistChipDefaults.assistChipColors(
@@ -192,19 +195,21 @@ fun ConfigScreen(
                                             val (chipText, chipColor) =
                                                 when (instance?.info?.status) {
                                                     null ->
-                                                        "Stopped" to
+                                                        stringResource(R.string.status_stopped) to
                                                             MaterialTheme.colorScheme.surfaceVariant
                                                     InstanceStatus.STARTING ->
-                                                        "Starting" to
+                                                        stringResource(R.string.status_starting) to
                                                             MaterialTheme.colorScheme.surfaceVariant
                                                     InstanceStatus.RUNNING ->
-                                                        "Running" to
+                                                        stringResource(R.string.status_running) to
                                                             MaterialTheme.colorScheme.primary
                                                     InstanceStatus.RESTARTING ->
-                                                        "Restarting" to
-                                                            MaterialTheme.colorScheme.tertiary
+                                                        stringResource(
+                                                            R.string.status_restarting
+                                                        ) to MaterialTheme.colorScheme.tertiary
                                                     InstanceStatus.ERROR ->
-                                                        "Failed" to MaterialTheme.colorScheme.error
+                                                        stringResource(R.string.status_failed) to
+                                                            MaterialTheme.colorScheme.error
                                                 }
                                             AssistChip(
                                                 onClick = {},
@@ -228,14 +233,14 @@ fun ConfigScreen(
                                     IconButton(onClick = { onEditConfigClick(file) }) {
                                         Icon(
                                             painterResource(R.drawable.edit),
-                                            contentDescription = "Edit",
+                                            contentDescription = stringResource(R.string.edit),
                                         )
                                     }
 
                                     IconButton(onClick = { showDeleteDialog.value = file }) {
                                         Icon(
                                             painterResource(R.drawable.delete),
-                                            contentDescription = "Delete",
+                                            contentDescription = stringResource(R.string.delete),
                                         )
                                     }
                                 }
