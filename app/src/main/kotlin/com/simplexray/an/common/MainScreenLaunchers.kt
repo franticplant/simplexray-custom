@@ -20,6 +20,7 @@ data class MainScreenLaunchers(
     val createFileLauncher: ActivityResultLauncher<String>,
     val openFileLauncher: ActivityResultLauncher<Array<String>>,
     val vpnPrepareLauncher: ActivityResultLauncher<Intent>,
+    val permissionsThenConnectLauncher: ActivityResultLauncher<Array<String>>,
     val geoipFilePickerLauncher: ActivityResultLauncher<Array<String>>,
     val geositeFilePickerLauncher: ActivityResultLauncher<Array<String>>,
 )
@@ -65,6 +66,12 @@ fun rememberMainScreenLaunchers(mainViewModel: MainViewModel): MainScreenLaunche
             }
         }
 
+    // Connects whatever the answer: a denied permission only hides the notification.
+    val permissionsThenConnectLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+            mainViewModel.connect(vpnPrepareLauncher)
+        }
+
     val geoipFilePickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
             if (uri != null) {
@@ -91,6 +98,7 @@ fun rememberMainScreenLaunchers(mainViewModel: MainViewModel): MainScreenLaunche
         createFileLauncher = createFileLauncher,
         openFileLauncher = openFileLauncher,
         vpnPrepareLauncher = vpnPrepareLauncher,
+        permissionsThenConnectLauncher = permissionsThenConnectLauncher,
         geoipFilePickerLauncher = geoipFilePickerLauncher,
         geositeFilePickerLauncher = geositeFilePickerLauncher,
     )

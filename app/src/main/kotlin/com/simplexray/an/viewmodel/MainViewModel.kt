@@ -3,6 +3,7 @@
 
 package com.simplexray.an.viewmodel
 
+import android.Manifest
 import android.app.ActivityManager
 import android.app.Application
 import android.content.BroadcastReceiver
@@ -12,6 +13,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.net.VpnService
+import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import androidx.activity.result.ActivityResultLauncher
@@ -847,6 +849,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     )
                     .setAction(TProxyService.ACTION_DISCONNECT)
             _uiEvent.trySend(MainViewUiEvent.StartService(intent))
+        }
+    }
+
+    /**
+     * Runtime permissions the connection works better with and the user hasn't granted. Without
+     * POST_NOTIFICATIONS, the running service's notification is hidden.
+     */
+    fun missingRuntimePermissions(): Array<String> = buildList {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+        .filter {
+            application.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+        }
+        .toTypedArray()
+
+    /** Starts the core alone or with the VPN, as the settings say. */
+    fun connect(vpnPrepareLauncher: ActivityResultLauncher<Intent>) {
+        if (settingsState.value.switches.disableVpn) {
+            startTProxyService(TProxyService.ACTION_START)
+        } else {
+            prepareAndStartVpn(vpnPrepareLauncher)
         }
     }
 
