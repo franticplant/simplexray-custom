@@ -30,7 +30,8 @@ with the app's export and import.
   carries the VPN interface's traffic into Xray's SOCKS inbound with low
   latency.
 - **Material 3 UI** with per-profile status, live traffic graphs, app-based
-  routing, and config import from share links and SimpleXray's own format.
+  routing, and config import from VLESS, VMess, Trojan and Shadowsocks share
+  links and SimpleXray's own format.
 
 ## Install
 
