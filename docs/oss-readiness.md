@@ -35,10 +35,9 @@ JNI natives on `com/simplexray/an/service/TProxyService`, and renaming the
 package would only cause churn. The display name stays "SimpleXray", with the
 README and store text saying it is an independent fork.
 
-The icon, screenshots and the id/ru/zh store translations are inherited. The
-icon and screenshots are MPL-2.0 material from the original repository. The
-translations describe the same app and are accurate, but they don't mention
-the fork; only `en-US` has been rewritten.
+The icon and screenshots are inherited MPL-2.0 material from the original
+repository. The store descriptions (`metadata/`) are written for the fork in
+every language, and the id/ru/zh ones are translations of `en-US`.
 
 ## 4. Secret scan (2026-10-21)
 
@@ -78,5 +77,4 @@ beyond the right to publish updates.
 
 ## 7. Open items
 
-- Rewrite the id/ru/zh store descriptions for the fork (optional).
 - targetSdk 37: adopt Android 17 behaviour changes after on-device testing.
