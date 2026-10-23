@@ -111,7 +111,7 @@ fun SettingsScreen(
                 OutlinedTextField(
                     value = ruleFileUrl,
                     onValueChange = { ruleFileUrl = it },
-                    label = { Text("URL") },
+                    label = { Text(stringResource(R.string.url)) },
                     modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp),
                     trailingIcon = {
                         val clipboardManager = LocalClipboard.current
@@ -123,15 +123,13 @@ fun SettingsScreen(
                                         ?.clipData
                                         ?.getItemAt(0)
                                         ?.text
-                                        .let {
-                                            ruleFileUrl = it.toString()
-                                        }
+                                        ?.let { ruleFileUrl = it.toString() }
                                 }
                             }
                         ) {
                             Icon(
                                 painter = painterResource(id = R.drawable.paste),
-                                contentDescription = "Paste",
+                                contentDescription = stringResource(R.string.paste),
                             )
                         }
                     },

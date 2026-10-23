@@ -124,6 +124,31 @@
     <string name="theme_dark">深色</string>
     <string name="auto">自动</string>
     <string name="socks_user">SOCKS 用户</string>
+    <string name="dashboard_global_stats">全局系统统计</string>
+    <string name="dashboard_running_instances">正在运行的 Xray 实例</string>
+    <string name="dashboard_no_instances">当前没有活动的 Xray 核心实例。</string>
+    <string name="stats_speed">速度</string>
+    <string name="stats_traffic">流量</string>
+    <string name="instance_name_vpn">%1$s（VPN）</string>
+    <string name="stop">停止</string>
+    <string name="primary_vpn">主 VPN</string>
+    <string name="status_stopped">已停止</string>
+    <string name="status_starting">启动中</string>
+    <string name="status_starting_detail">启动中…</string>
+    <string name="status_running">运行中</string>
+    <string name="status_running_no_stats">运行中，统计 API 无响应</string>
+    <string name="status_restarting">重启中</string>
+    <string name="status_restarting_detail">已崩溃，正在重启（%1$d）…</string>
+    <string name="status_failed">失败</string>
+    <string name="edit">编辑</string>
+    <string name="delete">删除</string>
+    <string name="paste">粘贴</string>
+    <plurals name="dashboard_active_instances">
+        <item quantity="other">%d 个活动实例</item>
+    </plurals>
+    <plurals name="status_running_restarted">
+        <item quantity="other">运行中（已重启 %d 次）</item>
+    </plurals>
     <plurals name="notification_more_instances">
         <item quantity="other">%1$s · 另有 %2$d 个</item>
     </plurals>

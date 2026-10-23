@@ -124,6 +124,37 @@
     <string name="theme_dark">Тёмная</string>
     <string name="auto">Автоматически</string>
     <string name="socks_user">Пользователь SOCKS</string>
+    <string name="dashboard_global_stats">Общая статистика системы</string>
+    <string name="dashboard_running_instances">Запущенные экземпляры Xray</string>
+    <string name="dashboard_no_instances">Нет активных экземпляров ядра Xray.</string>
+    <string name="stats_speed">Скорость</string>
+    <string name="stats_traffic">Трафик</string>
+    <string name="instance_name_vpn">%1$s (VPN)</string>
+    <string name="stop">Остановить</string>
+    <string name="primary_vpn">Основной VPN</string>
+    <string name="status_stopped">Остановлен</string>
+    <string name="status_starting">Запуск</string>
+    <string name="status_starting_detail">Запуск…</string>
+    <string name="status_running">Работает</string>
+    <string name="status_running_no_stats">Работает, API статистики не отвечает</string>
+    <string name="status_restarting">Перезапуск</string>
+    <string name="status_restarting_detail">Сбой, перезапуск (%1$d)…</string>
+    <string name="status_failed">Ошибка</string>
+    <string name="edit">Изменить</string>
+    <string name="delete">Удалить</string>
+    <string name="paste">Вставить</string>
+    <plurals name="dashboard_active_instances">
+        <item quantity="one">%d активный экземпляр</item>
+        <item quantity="few">%d активных экземпляра</item>
+        <item quantity="many">%d активных экземпляров</item>
+        <item quantity="other">%d активного экземпляра</item>
+    </plurals>
+    <plurals name="status_running_restarted">
+        <item quantity="one">Работает (перезапусков: %d)</item>
+        <item quantity="few">Работает (перезапусков: %d)</item>
+        <item quantity="many">Работает (перезапусков: %d)</item>
+        <item quantity="other">Работает (перезапусков: %d)</item>
+    </plurals>
     <plurals name="notification_more_instances">
         <item quantity="one">%1$s · ещё %2$d</item>
         <item quantity="few">%1$s · ещё %2$d</item>
