@@ -68,6 +68,10 @@ Lint treats every warning as an error, and there is no baseline. Fix
 findings. If one is truly a false positive, suppress it where it occurs, with
 a comment saying why.
 
+CodeQL (`.github/workflows/codeql.yml`) scans the Kotlin and Java code and
+the workflows on every pull request, every push to `main`, and weekly. Its
+findings appear under the repository's Security tab.
+
 `scripts/secret-scan.sh` is a pre-commit hook that rejects staged keys and
 tokens. Install it with:
 
