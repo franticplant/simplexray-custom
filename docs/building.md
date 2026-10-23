@@ -61,12 +61,16 @@ CI (`.github/workflows/android.yml`) runs all of these, and so can you:
 scripts/check-license-headers.sh   # MPL-2.0 SPDX header on every source file
 ./gradlew ktfmtCheck               # formatting (ktfmt, kotlinlang style); fix with ktfmtFormat
 ./gradlew testDebugUnitTest        # JVM unit tests
-./gradlew lintDebug                # Android lint against app/lint-baseline.xml
+./gradlew lintDebug                # Android lint, every warning an error
 ```
 
 Lint treats every warning as an error, and there is no baseline. Fix
 findings. If one is truly a false positive, suppress it where it occurs, with
 a comment saying why.
+
+CodeQL (`.github/workflows/codeql.yml`) scans the Kotlin and Java code and
+the workflows on every pull request, every push to `main`, and weekly. Its
+findings appear under the repository's Security tab.
 
 `scripts/secret-scan.sh` is a pre-commit hook that rejects staged keys and
 tokens. Install it with:

@@ -11,7 +11,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.core.content.FileProvider
 import com.simplexray.an.BuildConfig
 import com.simplexray.an.R
-import com.simplexray.an.service.TProxyService
 import com.simplexray.an.viewmodel.LogViewModel
 import com.simplexray.an.viewmodel.MainViewModel
 import java.io.File
@@ -115,10 +114,11 @@ fun rememberMainScreenCallbacks(
             mainViewModel.stopTProxyService()
         } else {
             mainViewModel.setControlMenuClickable(false)
-            if (mainViewModel.settingsState.value.switches.disableVpn) {
-                mainViewModel.startTProxyService(TProxyService.ACTION_START)
+            val missing = mainViewModel.missingRuntimePermissions()
+            if (missing.isNotEmpty()) {
+                launchers.permissionsThenConnectLauncher.launch(missing)
             } else {
-                mainViewModel.prepareAndStartVpn(launchers.vpnPrepareLauncher)
+                mainViewModel.connect(launchers.vpnPrepareLauncher)
             }
         }
     }

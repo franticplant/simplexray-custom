@@ -1,1 +1,1 @@
-Klien Xray yang Cepat, Simpel.
+Klien proxy Xray-core yang menjalankan beberapa inti sekaligus
