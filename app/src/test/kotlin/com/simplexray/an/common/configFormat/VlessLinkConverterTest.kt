@@ -134,9 +134,9 @@ class VlessLinkConverterTest {
 
     @Test
     fun name_isSanitizedForTheFileSystem() {
-        assertEquals("a_b_c", VlessLinkConverter.sanitizeName("a/b\\c"))
-        assertEquals(null, VlessLinkConverter.sanitizeName(" .. "))
-        assertEquals(null, VlessLinkConverter.sanitizeName(null))
+        assertEquals("a_b_c", ShareLink.sanitizeName("a/b\\c"))
+        assertEquals(null, ShareLink.sanitizeName(" .. "))
+        assertEquals(null, ShareLink.sanitizeName(null))
     }
 
     @Test
@@ -162,7 +162,7 @@ class VlessLinkConverterTest {
 
     @Test
     fun parseQuery_keepsPlusAndToleratesBadEscapes() {
-        val q = VlessLinkConverter.parseQuery("pbk=a+b&path=%zz&flag")
+        val q = ShareLink.parseQuery("pbk=a+b&path=%zz&flag")
 
         assertEquals("a+b", q["pbk"])
         assertEquals("%zz", q["path"])
