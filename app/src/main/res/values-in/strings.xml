@@ -124,6 +124,31 @@
     <string name="theme_dark">Gelap</string>
     <string name="auto">Otomatis</string>
     <string name="socks_user">"Pengguna SOCKS "</string>
+    <string name="dashboard_global_stats">Statistik Sistem Global</string>
+    <string name="dashboard_running_instances">Instans Xray yang Berjalan</string>
+    <string name="dashboard_no_instances">Tidak ada instans inti Xray yang aktif.</string>
+    <string name="stats_speed">Kecepatan</string>
+    <string name="stats_traffic">Lalu Lintas</string>
+    <string name="instance_name_vpn">%1$s (VPN)</string>
+    <string name="stop">Hentikan</string>
+    <string name="primary_vpn">VPN Utama</string>
+    <string name="status_stopped">Berhenti</string>
+    <string name="status_starting">Memulai</string>
+    <string name="status_starting_detail">Memulai…</string>
+    <string name="status_running">Berjalan</string>
+    <string name="status_running_no_stats">Berjalan, API statistik tidak merespons</string>
+    <string name="status_restarting">Memulai ulang</string>
+    <string name="status_restarting_detail">Mogok, memulai ulang (%1$d)…</string>
+    <string name="status_failed">Gagal</string>
+    <string name="edit">Edit</string>
+    <string name="delete">Hapus</string>
+    <string name="paste">Tempel</string>
+    <plurals name="dashboard_active_instances">
+        <item quantity="other">%d Instans Aktif</item>
+    </plurals>
+    <plurals name="status_running_restarted">
+        <item quantity="other">Berjalan (dimulai ulang %d×)</item>
+    </plurals>
     <plurals name="notification_more_instances">
         <item quantity="other">%1$s · %2$d lainnya</item>
     </plurals>

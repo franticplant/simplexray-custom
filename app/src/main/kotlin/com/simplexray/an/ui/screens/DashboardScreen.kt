@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -87,14 +88,23 @@ fun DashboardScreen(mainViewModel: MainViewModel) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = "Global System Stats",
+                            text = stringResource(R.string.dashboard_global_stats),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                         )
 
                         AssistChip(
                             onClick = {},
-                            label = { Text("$runningCount Active Instance(s)", fontSize = 12.sp) },
+                            label = {
+                                Text(
+                                    pluralStringResource(
+                                        R.plurals.dashboard_active_instances,
+                                        runningCount,
+                                        runningCount,
+                                    ),
+                                    fontSize = 12.sp,
+                                )
+                            },
                             colors =
                                 AssistChipDefaults.assistChipColors(
                                     containerColor =
@@ -110,7 +120,7 @@ fun DashboardScreen(mainViewModel: MainViewModel) {
                     Spacer(modifier = Modifier.height(12.dp))
 
                     StatRow(
-                        label = "Speed",
+                        label = stringResource(R.string.stats_speed),
                         value = formatRates(coreStats.uplinkRate, coreStats.downlinkRate),
                     )
                     StatRow(
@@ -140,7 +150,7 @@ fun DashboardScreen(mainViewModel: MainViewModel) {
 
         item {
             Text(
-                text = "Running Xray Instances",
+                text = stringResource(R.string.dashboard_running_instances),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(vertical = 8.dp),
@@ -157,7 +167,7 @@ fun DashboardScreen(mainViewModel: MainViewModel) {
                         ),
                 ) {
                     Text(
-                        text = "No Xray core instances currently active.",
+                        text = stringResource(R.string.dashboard_no_instances),
                         modifier = Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -197,7 +207,10 @@ fun InstanceCard(instance: InstanceState, onStop: () -> Unit) {
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = info.configName + if (info.isPrimaryVpn) " (VPN)" else "",
+                        text =
+                            if (info.isPrimaryVpn)
+                                stringResource(R.string.instance_name_vpn, info.configName)
+                            else info.configName,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -209,7 +222,7 @@ fun InstanceCard(instance: InstanceState, onStop: () -> Unit) {
                 }
 
                 OutlinedButton(onClick = onStop) {
-                    Text("Stop", fontSize = 12.sp)
+                    Text(stringResource(R.string.stop), fontSize = 12.sp)
                 }
             }
 
@@ -226,25 +239,28 @@ fun InstanceCard(instance: InstanceState, onStop: () -> Unit) {
 
             if (stats != null) {
                 Spacer(modifier = Modifier.height(8.dp))
-                StatRow(label = "Speed", value = formatRates(stats.uplinkRate, stats.downlinkRate))
                 StatRow(
-                    label = "Traffic",
+                    label = stringResource(R.string.stats_speed),
+                    value = formatRates(stats.uplinkRate, stats.downlinkRate),
+                )
+                StatRow(
+                    label = stringResource(R.string.stats_traffic),
                     value = "↑ ${formatBytes(stats.uplink)}  ↓ ${formatBytes(stats.downlink)}",
                 )
                 StatRow(
-                    label = "Goroutines",
+                    label = stringResource(R.string.stats_num_goroutine),
                     value = formatNumber(stats.numGoroutine.toLong()),
                 )
                 StatRow(
-                    label = "Memory Alloc",
+                    label = stringResource(R.string.stats_alloc),
                     value = formatBytes(stats.alloc),
                 )
                 StatRow(
-                    label = "Instance Uptime",
+                    label = stringResource(R.string.stats_uptime),
                     value = formatUptime(stats.uptime),
                 )
                 Text(
-                    text = "API ${info.apiAddress}:${info.apiPort}",
+                    text = stringResource(R.string.instance_api, info.apiAddress, info.apiPort),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -254,18 +270,25 @@ fun InstanceCard(instance: InstanceState, onStop: () -> Unit) {
 }
 
 /** What an instance is doing, in a few words. */
+@Composable
 fun statusLabel(instance: InstanceState): String {
     val info = instance.info
     return when (info.status) {
-        InstanceStatus.STARTING -> "Starting…"
+        InstanceStatus.STARTING -> stringResource(R.string.status_starting_detail)
         InstanceStatus.RUNNING ->
             when {
-                instance.stats == null -> "Running, stats API not answering"
-                info.restarts > 0 -> "Running (restarted ${info.restarts}×)"
-                else -> "Running"
+                instance.stats == null -> stringResource(R.string.status_running_no_stats)
+                info.restarts > 0 ->
+                    pluralStringResource(
+                        R.plurals.status_running_restarted,
+                        info.restarts,
+                        info.restarts,
+                    )
+                else -> stringResource(R.string.status_running)
             }
-        InstanceStatus.RESTARTING -> "Crashed, restarting (${info.restarts})…"
-        InstanceStatus.ERROR -> "Failed"
+        InstanceStatus.RESTARTING ->
+            stringResource(R.string.status_restarting_detail, info.restarts)
+        InstanceStatus.ERROR -> stringResource(R.string.status_failed)
     }
 }
 
