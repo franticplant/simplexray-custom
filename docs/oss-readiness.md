@@ -49,6 +49,8 @@ the fork; only `en-US` has been rewritten.
   An early `local.properties` held a Windows SDK path and nothing secret.
 - Ongoing: `scripts/secret-scan.sh` as a pre-commit hook. GitHub secret
   scanning and push protection are enabled on the repository.
+- CodeQL scans the Kotlin, Java and workflow code
+  (`.github/workflows/codeql.yml`).
 
 ## 5. Release integrity
 
