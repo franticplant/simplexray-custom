@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/franticplant/simplexray-custom/security/advisories/new
+    about: Report security problems privately.
+  - name: Xray-core problems
+    url: https://github.com/XTLS/Xray-core/issues
+    about: Bugs in the proxy core itself belong upstream.

@@ -1,0 +1,45 @@
+name: Bug report
+description: Something doesn't work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems go through [private vulnerability reporting](https://github.com/franticplant/simplexray-custom/security/advisories/new), not here.
+        Strip real server addresses, UUIDs and keys from anything you paste.
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Settings → About, or the release tag.
+      placeholder: v1.11.0
+    validations:
+      required: true
+  - type: input
+    id: android
+    attributes:
+      label: Android version and device
+      placeholder: Android 16, Pixel 8
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Import a VLESS config
+        2. Connect
+        3. ...
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: From the app's log view, or `adb logcat`.
+      render: text
