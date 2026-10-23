@@ -911,6 +911,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refreshConfigFileList() {
         viewModelScope.launch(Dispatchers.IO) {
+            InstanceRegistry.removeLegacyFile(application)
             val filesDir = application.filesDir
             val actualFiles =
                 filesDir.listFiles { file -> file.isFile && file.name.endsWith(".json") }?.toList()

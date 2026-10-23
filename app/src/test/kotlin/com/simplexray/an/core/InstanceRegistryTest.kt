@@ -4,6 +4,8 @@
 package com.simplexray.an.core
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class InstanceRegistryTest {
@@ -44,5 +46,13 @@ class InstanceRegistryTest {
 
         assertEquals(InstanceStatus.ERROR, info.status)
         assertEquals(0, info.restarts)
+    }
+
+    @Test
+    fun isRegistry_tellsTheRegistryFromAConfigOfTheSameName() {
+        assertTrue(InstanceRegistry.isRegistry(InstanceRegistry.encode(emptyList())))
+        assertTrue(InstanceRegistry.isRegistry("\n [{\"configPath\":\"/a.json\"}]"))
+        assertFalse(InstanceRegistry.isRegistry("{\"outbounds\":[]}"))
+        assertFalse(InstanceRegistry.isRegistry(""))
     }
 }
