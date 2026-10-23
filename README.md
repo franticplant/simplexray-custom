@@ -70,6 +70,11 @@ made.
 
 See [docs/README.md](docs/README.md).
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Report security problems privately, as
+described in [SECURITY.md](SECURITY.md).
+
 ## License
 
 [Mozilla Public License 2.0](LICENSE). Bundled third-party components and their

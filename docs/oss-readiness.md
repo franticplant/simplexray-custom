@@ -49,6 +49,8 @@ the fork; only `en-US` has been rewritten.
   An early `local.properties` held a Windows SDK path and nothing secret.
 - Ongoing: `scripts/secret-scan.sh` as a pre-commit hook. GitHub secret
   scanning and push protection are enabled on the repository.
+- Vulnerabilities are reported privately through GitHub's private
+  vulnerability reporting (`SECURITY.md`).
 
 ## 5. Release integrity
 
@@ -61,7 +63,8 @@ the fork; only `en-US` has been rewritten.
   plus `SHA256SUMS`.
 - Builds are reproducible from the tag. A second runner rebuilds each release
   and compares it with apksigcopier. Anyone can repeat this with
-  `scripts/verify-reproducible.sh`.
+  `scripts/verify-reproducible.sh`. v1.11.0 is the first full release to pass
+  that check on GitHub's runners.
 - Repository rules: `main` requires signed commits and allows no force-push or
   deletion; `v*` tags cannot be moved or deleted.
 
@@ -75,7 +78,5 @@ beyond the right to publish updates.
 
 ## 7. Open items
 
-- Run the first tagged release, and confirm the reproducibility job passes on
-  GitHub's runners.
 - Rewrite the id/ru/zh store descriptions for the fork (optional).
 - targetSdk 37: adopt Android 17 behaviour changes after on-device testing.
