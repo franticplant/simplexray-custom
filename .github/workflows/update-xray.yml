@@ -111,21 +111,26 @@ jobs:
           NAME: ${{ steps.check.outputs.name }}
         run: |
           notes="docs/release-notes/v$NAME.md"
-          sha=$(gh api graphql \
-            -f query='mutation($input: CreateCommitOnBranchInput!) {
-              createCommitOnBranch(input: $input) { commit { oid } } }' \
-            --input - --jq .data.createCommitOnBranch.commit.oid <<JSON
-          {"variables": {"input": {
-            "branch": {"repositoryNameWithOwner": "$GITHUB_REPOSITORY", "branchName": "main"},
-            "expectedHeadOid": "$(git rev-parse HEAD)",
-            "message": {"headline": "Update Xray-core to $XRAY, release v$NAME"},
-            "fileChanges": {"additions": [
-              {"path": "version.properties", "contents": "$(base64 -w0 version.properties)"},
-              {"path": "$notes", "contents": "$(base64 -w0 "$notes")"}
-            ]}
-          }}}
-          JSON
-          )
+          # --input replaces the whole GraphQL request body, so the query has to
+          # be part of it; -f query=... is ignored when --input is used.
+          payload=$(jq -n \
+            --arg query 'mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }' \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg head "$(git rev-parse HEAD)" \
+            --arg headline "Update Xray-core to $XRAY, release v$NAME" \
+            --arg versionProps "$(base64 -w0 version.properties)" \
+            --arg notesPath "$notes" \
+            --arg notesContent "$(base64 -w0 "$notes")" \
+            '{query: $query, variables: {input: {
+              branch: {repositoryNameWithOwner: $repo, branchName: "main"},
+              expectedHeadOid: $head,
+              message: {headline: $headline},
+              fileChanges: {additions: [
+                {path: "version.properties", contents: $versionProps},
+                {path: $notesPath, contents: $notesContent}
+              ]}
+            }}}')
+          sha=$(printf '%s' "$payload" | gh api graphql --input - --jq .data.createCommitOnBranch.commit.oid)
           [[ $sha =~ ^[0-9a-f]{40}$ ]] || { echo "::error::commit failed: $sha"; exit 1; }
           gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/v$NAME" -f sha="$sha" > /dev/null
           echo "Committed $sha and tagged v$NAME"
