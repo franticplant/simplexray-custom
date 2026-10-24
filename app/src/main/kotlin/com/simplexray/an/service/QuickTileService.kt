@@ -4,15 +4,19 @@
 package com.simplexray.an.service
 
 import android.app.ActivityManager
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.VpnService
+import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.simplexray.an.activity.MainActivity
+import com.simplexray.an.prefs.Preferences
 
 class QuickTileService : TileService() {
 
@@ -68,8 +72,15 @@ class QuickTileService : TileService() {
 
         qsTile.run {
             if (state == Tile.STATE_INACTIVE) {
-                if (VpnService.prepare(this@QuickTileService) != null) {
-                    Log.e(TAG, "QuickTileService VPN not ready.")
+                val prefs = Preferences(this@QuickTileService)
+                val needsApp =
+                    prefs.selectedConfigPath == null ||
+                        (!prefs.disableVpn && VpnService.prepare(this@QuickTileService) != null)
+                if (needsApp) {
+                    // No config to run, or the VPN needs the user's consent: both happen in the
+                    // app.
+                    Log.w(TAG, "Not ready to connect from the tile; opening the app.")
+                    openApp()
                     return
                 }
                 startTProxyService(TProxyService.ACTION_START)
@@ -82,6 +93,17 @@ class QuickTileService : TileService() {
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "QuickTileService destroyed.")
+    }
+
+    private fun openApp() {
+        val intent = Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startActivityAndCollapse(
+                PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+            )
+        } else {
+            @Suppress("DEPRECATION") startActivityAndCollapse(intent)
+        }
     }
 
     private fun updateTileState(isActive: Boolean) {

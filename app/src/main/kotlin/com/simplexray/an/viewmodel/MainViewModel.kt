@@ -81,6 +81,9 @@ sealed class MainViewUiEvent {
     data object RefreshConfigList : MainViewUiEvent()
 
     data class Navigate(val route: String) : MainViewUiEvent()
+
+    /** Connect the way the main switch does: permissions first, then the VPN or the core alone. */
+    data object Connect : MainViewUiEvent()
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -471,7 +474,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _uiEvent.trySend(MainViewUiEvent.StartService(intent))
             } else {
                 updateSelectedConfigFile(File(configPath))
-                startTProxyService(TProxyService.ACTION_CONNECT)
+                _uiEvent.trySend(MainViewUiEvent.Connect)
             }
             refreshActiveInstances()
         }
