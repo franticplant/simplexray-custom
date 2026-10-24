@@ -3,6 +3,7 @@
 
 package com.simplexray.an.service
 
+import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
@@ -95,6 +96,8 @@ class QuickTileService : TileService() {
         Log.d(TAG, "QuickTileService destroyed.")
     }
 
+    // The Intent overload is only used below API 34, where the PendingIntent one does not exist.
+    @SuppressLint("StartActivityAndCollapseDeprecated")
     private fun openApp() {
         val intent = Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
