@@ -20,6 +20,24 @@ object Telemetry {
 
     fun store(context: Context, process: String) = TelemetryStore(root(context), process)
 
+    /** The session logs on disk, newest first; see LogFileManager. */
+    fun sessionLogs(context: Context): List<File> =
+        File(context.filesDir, "logs")
+            .listFiles { f -> f.isFile && f.name.endsWith(".txt") }
+            .orEmpty()
+            .sortedByDescending { it.name }
+
+    /** The first line of `xray -version`, or "unknown". */
+    fun xrayVersion(context: Context): String =
+        runCatching {
+            val process =
+                ProcessBuilder("${context.applicationInfo.nativeLibraryDir}/libxray.so", "-version")
+                    .redirectErrorStream(true)
+                    .start()
+            process.inputStream.bufferedReader().use { it.readLine() }.also { process.destroy() }
+        }
+            .getOrNull() ?: "unknown"
+
     /**
      * Records an event from the app's process (imports, permission answers, connectivity tests).
      * The service records its own through its [Recorder].

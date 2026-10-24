@@ -335,6 +335,17 @@ class InstanceSupervisorTest {
             "Xray exited with code 1: [Error] failed to dial",
             InstanceSupervisor.describeExit(1, listOf("[Error] failed to dial", "shutting down")),
         )
+        // Traffic logging is not a reason.
+        assertEquals(
+            "Xray exited with code 0",
+            InstanceSupervisor.describeExit(
+                0,
+                listOf(
+                    "2026/10/24 14:21:23 from tcp:127.0.0.1:1 accepted tcp:1.2.3.4:443 [proxy]",
+                    "2026/10/24 14:21:24 [Info] app/dispatcher: taking detour",
+                ),
+            ),
+        )
     }
 
     /** Blocks in read() until closed, then fails the way Android does when a stream is closed. */

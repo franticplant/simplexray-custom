@@ -315,17 +315,19 @@ class InstanceSupervisor(
 
         /**
          * Why Xray exited, from its exit code and its last log lines: the last line that reports a
-         * failure, else the last line.
+         * failure, else the last line that is not routine traffic logging (which says nothing about
+         * why it stopped).
          */
         internal fun describeExit(code: Int, lines: Collection<String>): String {
             val reason =
                 lines.lastOrNull { FAILURE.containsMatchIn(it) }
-                    ?: lines.lastOrNull { it.isNotBlank() }
+                    ?: lines.lastOrNull { it.isNotBlank() && !ROUTINE.containsMatchIn(it) }
             val summary = "Xray exited with code $code"
             return if (reason == null) summary else "$summary: ${reason.trim().take(300)}"
         }
 
         private val FAILURE = Regex("fail|error|panic|fatal", RegexOption.IGNORE_CASE)
+        private val ROUTINE = Regex("""\baccepted\b|\[(Info|Debug)]""")
     }
 }
 

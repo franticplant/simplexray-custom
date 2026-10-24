@@ -236,10 +236,20 @@ object History {
         return starts.mapIndexed { i, start -> Bucket(start, totals[i]) }
     }
 
+    /** Sessions whose primary core failed to start before they connected. */
+    fun failedToStart(runs: List<Run>): Set<String> =
+        runs
+            .filter {
+                it.primary && (it.outcome == Outcome.FAILED || it.outcome == Outcome.TIMEOUT)
+            }
+            .mapNotNull { it.sessionId }
+            .toSet()
+
     fun reliability(sessions: List<Session>, runs: List<Run>): Reliability {
         val ttc = sessions.mapNotNull { it.timeToConnectMs }.sorted()
-        // A session still connecting is not a failure yet.
-        val decided = sessions.filter { it.connectedAt != null || !it.isOpen }
+        // A session still connecting is not a failure yet, unless its core already failed.
+        val failed = failedToStart(runs)
+        val decided = sessions.filter { it.connectedAt != null || !it.isOpen || it.id in failed }
         val failures =
             runs
                 .filter { it.outcome != Outcome.STOPPED && it.failure != null }

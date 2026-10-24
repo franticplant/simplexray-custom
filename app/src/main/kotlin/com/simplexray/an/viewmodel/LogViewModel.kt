@@ -50,6 +50,38 @@ class LogViewModel(application: Application) : AndroidViewModel(application) {
         _searchQuery.value = query
     }
 
+    /** Show only warnings and errors. */
+    private val _problemsOnly = MutableStateFlow(false)
+    val problemsOnly: StateFlow<Boolean> = _problemsOnly.asStateFlow()
+
+    /** Show only this config's lines; null for all. */
+    private val _configFilter = MutableStateFlow<String?>(null)
+    val configFilter: StateFlow<String?> = _configFilter.asStateFlow()
+
+    /** The configs the shown log has lines from. */
+    private val _configs = MutableStateFlow<List<String>>(emptyList())
+    val configs: StateFlow<List<String>> = _configs.asStateFlow()
+
+    /** Session logs, newest first, and the one shown (null: the current one, followed live). */
+    private val _sessionFiles = MutableStateFlow<List<File>>(emptyList())
+    val sessionFiles: StateFlow<List<File>> = _sessionFiles.asStateFlow()
+    private val _selectedFile = MutableStateFlow<File?>(null)
+    val selectedFile: StateFlow<File?> = _selectedFile.asStateFlow()
+
+    fun setProblemsOnly(value: Boolean) {
+        _problemsOnly.value = value
+    }
+
+    fun setConfigFilter(config: String?) {
+        _configFilter.value = config
+    }
+
+    /** Shows a past session's log, or the current one (null). */
+    fun selectSession(file: File?) {
+        _selectedFile.value = file?.takeIf { it != _sessionFiles.value.firstOrNull() }
+        loadLogs()
+    }
+
     private val _hasLogsToExport = MutableStateFlow(false)
     val hasLogsToExport: StateFlow<Boolean> = _hasLogsToExport.asStateFlow()
 
@@ -65,7 +97,8 @@ class LogViewModel(application: Application) : AndroidViewModel(application) {
                 override fun onReceive(context: Context, intent: Intent) {
                     if (TProxyService.ACTION_LOG_UPDATE == intent.action) {
                         val newLogs = intent.getStringArrayListExtra(TProxyService.EXTRA_LOG_DATA)
-                        if (!newLogs.isNullOrEmpty()) {
+                        // A past session's log does not change.
+                        if (!newLogs.isNullOrEmpty() && _selectedFile.value == null) {
                             Log.d(
                                 TAG,
                                 "Received log update broadcast with ${newLogs.size} entries.",
@@ -91,9 +124,14 @@ class LogViewModel(application: Application) : AndroidViewModel(application) {
             combine(
                     logEntries,
                     searchQuery.debounce(200),
-                ) { logs, query ->
-                    if (query.isBlank()) logs
-                    else logs.filter { it.contains(query, ignoreCase = true) }
+                    problemsOnly,
+                    configFilter,
+                ) { logs, query, problems, config ->
+                    logs.filter {
+                        (query.isBlank() || it.contains(query, ignoreCase = true)) &&
+                            (!problems || LogFileManager.isProblem(it)) &&
+                            (config == null || LogFileManager.configOf(it) == config)
+                    }
                 }
                 .flowOn(Dispatchers.Default)
                 .collect { _filteredEntries.value = it }
@@ -119,7 +157,8 @@ class LogViewModel(application: Application) : AndroidViewModel(application) {
     fun loadLogs() {
         viewModelScope.launch(Dispatchers.IO) {
             Log.d(TAG, "Loading logs.")
-            val savedLogData = logFileManager.readLogs()
+            _sessionFiles.value = logFileManager.sessionFiles()
+            val savedLogData = logFileManager.readLogs(getLogFile())
             val initialLogs =
                 if (!savedLogData.isNullOrEmpty()) {
                     savedLogData.split("\n").filter { it.trim().isNotEmpty() }
@@ -135,6 +174,7 @@ class LogViewModel(application: Application) : AndroidViewModel(application) {
             logEntrySet.clear()
             _logEntries.value = initialLogs.filter { logEntrySet.add(it) }.reversed()
         }
+        _configs.value = initialLogs.mapNotNull(LogFileManager::configOf).distinct().sorted()
         Log.d(TAG, "Processed initial logs: ${_logEntries.value.size} unique entries.")
     }
 
@@ -145,6 +185,10 @@ class LogViewModel(application: Application) : AndroidViewModel(application) {
         if (uniqueNewLogs.isNotEmpty()) {
             withContext(Dispatchers.Main) {
                 _logEntries.value = uniqueNewLogs + _logEntries.value
+                val seen = uniqueNewLogs.mapNotNull(LogFileManager::configOf)
+                if (!_configs.value.containsAll(seen)) {
+                    _configs.value = (_configs.value + seen).distinct().sorted()
+                }
             }
             Log.d(TAG, "Added ${uniqueNewLogs.size} new unique log entries.")
         } else {
@@ -158,13 +202,15 @@ class LogViewModel(application: Application) : AndroidViewModel(application) {
                 _logEntries.value = emptyList()
                 logEntrySet.clear()
             }
+            _selectedFile.value = null
+            _configs.value = emptyList()
+            _configFilter.value = null
             Log.d(TAG, "Logs cleared.")
         }
     }
 
-    fun getLogFile(): File {
-        return logFileManager.logFile
-    }
+    /** The log shown: a past session's, or the current one. */
+    fun getLogFile(): File = _selectedFile.value ?: logFileManager.logFile
 }
 
 class LogViewModelFactory(private val application: Application) : ViewModelProvider.Factory {

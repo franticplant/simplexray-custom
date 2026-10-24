@@ -15,11 +15,14 @@ import android.net.NetworkCapabilities
 class NetworkWatcher(context: Context, private val recorder: Recorder) {
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
     @Volatile private var last: String? = null
+    // The underlying network last reported, so the VPN's own network going away is not a loss.
+    @Volatile private var network: Network? = null
 
     private val callback =
         object : ConnectivityManager.NetworkCallback() {
             override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
                 if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return
+                this@NetworkWatcher.network = network
                 val name = describe(caps)
                 val validated = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
                 val key = "$name/$validated"
@@ -41,7 +44,8 @@ class NetworkWatcher(context: Context, private val recorder: Recorder) {
             }
 
             override fun onLost(network: Network) {
-                if (last == null) return
+                if (network != this@NetworkWatcher.network) return
+                this@NetworkWatcher.network = null
                 last = null
                 recorder.event(Level.WARN, Category.NETWORK, "network.lost", "Network lost")
             }

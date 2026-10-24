@@ -12,7 +12,11 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.application
 import com.simplexray.an.service.TProxyService
+import com.simplexray.an.telemetry.Category
+import com.simplexray.an.telemetry.Level
+import com.simplexray.an.telemetry.Telemetry
 import com.simplexray.an.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
 
@@ -63,12 +67,33 @@ fun rememberMainScreenLaunchers(mainViewModel: MainViewModel): MainScreenLaunche
                 mainViewModel.startTProxyService(TProxyService.ACTION_CONNECT)
             } else {
                 mainViewModel.setControlMenuClickable(true)
+                Telemetry.event(
+                    mainViewModel.application,
+                    Level.WARN,
+                    Category.PERMISSION,
+                    "permission.vpn_denied",
+                    "VPN permission was not granted; not connecting",
+                )
             }
         }
 
     // Connects whatever the answer: a denied permission only hides the notification.
     val permissionsThenConnectLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+            results ->
+            results
+                .filterValues { granted -> !granted }
+                .keys
+                .forEach { permission ->
+                    Telemetry.event(
+                        mainViewModel.application,
+                        Level.WARN,
+                        Category.PERMISSION,
+                        "permission.denied",
+                        "${permission.substringAfterLast('.')} was not granted",
+                        mapOf("permission" to permission),
+                    )
+                }
             mainViewModel.connect(vpnPrepareLauncher)
         }
 

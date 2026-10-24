@@ -30,3 +30,17 @@ fun formatUptime(seconds: Int): String =
             "%02d:%02d:%02d".format(hours, minutes, secs)
         }
     }
+
+/** A duration as its two largest units: "45s", "12m 5s", "3h 20m", "2d 4h". */
+fun formatDuration(ms: Long): String {
+    val s = (ms / 1000).coerceAtLeast(0)
+    val d = s / 86_400
+    val h = s % 86_400 / 3600
+    val m = s % 3600 / 60
+    return when {
+        d > 0 -> "${d}d ${h}h"
+        h > 0 -> "${h}h ${m}m"
+        m > 0 -> "${m}m ${s % 60}s"
+        else -> "${s}s"
+    }
+}

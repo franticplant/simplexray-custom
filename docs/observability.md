@@ -28,6 +28,12 @@ A VPN client's user mostly wants to know:
 | Run | service | each Xray process exit | session, config, start, time to API ready, end, exit code, outcome, failure reason |
 | Traffic | service | each minute with traffic | minute, session, config, outbound tag, class (proxy/direct/block/other), bytes up and down |
 | Event | service and app | as they happen | time, level, category, type, message, attributes, session |
+
+The app's own process records config imports and deletions (with the link
+type, never the link), permissions the user declined, and connectivity test
+results with their latency. The service records the rest, including changes of
+the underlying network (Wi-Fi, mobile data, lost) and whether it has internet
+access.
 | Log | service | each Xray output line | time, config, line |
 
 The service samples each running core's StatsService every 10 seconds, whether
@@ -38,6 +44,9 @@ counted from zero.
 A session the service never closed (its process was killed) is closed with the
 end reason `killed` the next time the service starts. The end time is the last
 moment the session was seen alive.
+
+A session counts as failed if it never connected and either ended or had its
+primary core fail to start. A session still connecting is not counted yet.
 
 Session end reasons: `user`, `revoked` (another VPN took over, or VPN access
 was revoked in system settings), `failed` (the tunnel could not be set up),
@@ -68,22 +77,27 @@ rewritten at hour resolution, which caps the data at about 24 rows per outbound
 per day. The service applies expiry and compaction when it starts and then once
 an hour. "Clear history" deletes everything at once.
 
-Xray's output goes to one log file per session, and the last 20 sessions' logs
-are kept. A session's log is capped at 5 MB: its oldest half is dropped when it
-grows past that.
+Xray's output goes to one log file per session (`files/logs/`), and the last
+20 sessions' logs are kept. Each line starts with the time it was logged and
+the config it came from, and Xray's own timestamp is removed. A session's log
+is capped at 5 MB: its oldest half is dropped when it grows past that.
 
 ## Privacy
 
 Records never contain config contents, UUIDs, passwords or keys. They do hold
-config names and outbound tags. Xray's own log lines can contain server
+config names and outbound tags. Outbounds without a tag get one when the core
+starts (`outbound-<index>`), because Xray counts traffic only for tagged
+outbounds. Xray's own log lines can contain server
 addresses and the domains being visited, because that is what Xray logs at its
 `info` and `debug` levels.
 
 The export screen redacts by default:
 
-- IP addresses keep only their first part (`203.0.113.7` becomes `203.x.x.x`).
-- Domains keep only their last two labels (`www.example.com` becomes
-  `*.example.com`).
+- IPv4 addresses keep only their first number (`203.0.113.7` becomes
+  `203.x.x.x`), and IPv6 addresses become `<ipv6>`. Loopback addresses are kept.
+- Domains keep only their top-level domain (`www.example.com` becomes
+  `<domain>.com`). File names in Xray's log lines, such as `handler.go`, are
+  left as they are.
 - UUIDs are replaced with `<uuid>`.
 
 Turning redaction off exports the logs as recorded.
@@ -99,6 +113,9 @@ Activity → Export builds one zip for a chosen range and shares it:
 - `manifest.json`: the app, Xray-core and Android versions, export time,
   range, retention setting and whether the export is redacted.
 
+The zip is written to the app's cache (`cache/exports/`, only the latest one
+is kept) and shared through the system share sheet.
+
 ## In the app
 
 - **Dashboard:**
@@ -112,5 +129,7 @@ Activity → Export builds one zip for a chosen range and shares it:
   - **Sessions:** each session with its duration, data, config and end reason.
     Opening one shows its traffic chart, runs, events and log.
   - **Events:** the timeline, filtered by level and category.
-- **Log:** timestamps, a filter by config and level, and the current session's
-  log with the previous ones a tap away.
+- **Log:** timestamps, a filter for warnings and errors and one by config, and
+  the current session's log with the previous ones a tap away.
+- **History settings** (Activity → ⋮): record on or off, how long to keep it,
+  the space it uses, and "Clear history".

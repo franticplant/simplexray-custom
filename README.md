@@ -29,6 +29,11 @@ with the app's export and import.
 - **Tun2socks in C.** [hev-socks5-tunnel](https://github.com/heiher/hev-socks5-tunnel)
   carries the VPN interface's traffic into Xray's SOCKS inbound with low
   latency.
+- **Activity and history, on the device.** Sessions, time to connect, core
+  crashes and their reasons, network changes, and data per day and per config,
+  split into proxied, direct and blocked traffic. Logs are kept per session.
+  History is kept for a set number of days and can be exported as a zip, with
+  addresses redacted. See [observability](docs/observability.md).
 - **Material 3 UI** with per-profile status, live traffic graphs, app-based
   routing, and config import from VLESS, VMess, Trojan and Shadowsocks share
   links and SimpleXray's own format.

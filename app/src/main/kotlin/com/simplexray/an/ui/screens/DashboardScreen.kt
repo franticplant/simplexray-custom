@@ -3,6 +3,7 @@
 
 package com.simplexray.an.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -14,10 +15,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -38,13 +42,20 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.simplexray.an.R
 import com.simplexray.an.common.formatBytes
+import com.simplexray.an.common.formatDuration
 import com.simplexray.an.common.formatNumber
 import com.simplexray.an.common.formatUptime
 import com.simplexray.an.core.InstanceStatus
+import com.simplexray.an.ui.charts.ClassBar
+import com.simplexray.an.ui.charts.ClassLegend
+import com.simplexray.an.ui.charts.ThroughputLines
+import com.simplexray.an.viewmodel.ActivityViewModel
 import com.simplexray.an.viewmodel.InstanceState
 import com.simplexray.an.viewmodel.MainViewModel
+import com.simplexray.an.viewmodel.TodayState
 import kotlinx.coroutines.delay
 
 /** Polls instance state and stats every second while the calling screen is resumed. */
@@ -65,7 +76,20 @@ fun PollCoreStats(mainViewModel: MainViewModel) {
 fun DashboardScreen(mainViewModel: MainViewModel) {
     val coreStats by mainViewModel.coreStatsState.collectAsState()
     val activeInstances by mainViewModel.activeInstances.collectAsState()
+    val throughput by mainViewModel.throughput.collectAsState()
+    val isServiceEnabled by mainViewModel.isServiceEnabled.collectAsState()
+    val activityViewModel: ActivityViewModel = viewModel()
+    val today by activityViewModel.today.collectAsState()
     PollCoreStats(mainViewModel)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(Unit) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                activityViewModel.refreshToday()
+                delay(TODAY_REFRESH_MS)
+            }
+        }
+    }
 
     val runningCount = activeInstances.count { it.info.status == InstanceStatus.RUNNING }
 
@@ -123,6 +147,11 @@ fun DashboardScreen(mainViewModel: MainViewModel) {
                         label = stringResource(R.string.stats_speed),
                         value = formatRates(coreStats.uplinkRate, coreStats.downlinkRate),
                     )
+                    if (isServiceEnabled) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        ThroughputLines(throughput, MainViewModel.THROUGHPUT_SAMPLES)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                     StatRow(
                         label = stringResource(id = R.string.stats_uplink),
                         value = formatBytes(coreStats.uplink),
@@ -145,6 +174,11 @@ fun DashboardScreen(mainViewModel: MainViewModel) {
                     )
                 }
             }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        item {
+            TodayCard(today, onOpen = mainViewModel::openActivity)
             Spacer(modifier = Modifier.height(16.dp))
         }
 
@@ -187,6 +221,79 @@ fun DashboardScreen(mainViewModel: MainViewModel) {
         }
     }
 }
+
+/** Today's data by class, time connected, the session in progress, and the way to Activity. */
+@Composable
+fun TodayCard(today: TodayState, onOpen: () -> Unit) {
+    Card(
+        modifier =
+            Modifier.fillMaxWidth()
+                .clip(MaterialTheme.shapes.extraLarge)
+                .clickable(onClick = onOpen),
+        colors =
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(R.string.dashboard_today),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = formatBytes(today.bytes.total),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontFamily = FontFamily.Monospace,
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            ClassBar(today.bytes, today.bytes.total)
+            Spacer(modifier = Modifier.height(8.dp))
+            ClassLegend(bytes = today.bytes)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text =
+                    pluralStringResource(
+                        R.plurals.dashboard_today_sessions,
+                        today.sessions,
+                        formatDuration(today.connectedMs),
+                        today.sessions,
+                    ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            today.current?.let { row ->
+                Text(
+                    text =
+                        stringResource(
+                            R.string.dashboard_current_session,
+                            formatDuration(row.session.durationMs(System.currentTimeMillis())),
+                            formatBytes(row.bytes.total),
+                        ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(R.string.dashboard_open_activity),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+    }
+}
+
+private const val TODAY_REFRESH_MS = 30_000L
 
 @Composable
 fun InstanceCard(instance: InstanceState, onStop: () -> Unit) {

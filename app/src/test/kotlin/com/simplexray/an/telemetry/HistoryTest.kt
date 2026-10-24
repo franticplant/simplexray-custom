@@ -156,6 +156,17 @@ class HistoryTest {
     }
 
     @Test
+    fun reliability_aSessionWhoseCoreFailedHasFailed_evenWhileOpen() {
+        val sessions = listOf(session("1", 0, null, null), session("2", 0, 500, 10))
+        val runs = listOf(Run("1", "A", true, 0, null, 1, 23, Outcome.FAILED, "bad config"))
+
+        val r = History.reliability(sessions, runs)
+
+        assertEquals(2, r.sessions)
+        assertEquals(1, r.connected)
+    }
+
+    @Test
     fun reliability_withNoSessionsHasNoRate() {
         val r = History.reliability(emptyList(), emptyList())
 

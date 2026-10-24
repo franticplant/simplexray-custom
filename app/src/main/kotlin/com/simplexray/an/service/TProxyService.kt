@@ -175,7 +175,6 @@ class TProxyService : VpnService() {
             }
 
             ACTION_START -> {
-                logFileManager.clearLogs()
                 val prefs = Preferences(this)
                 openSession(prefs)
                 if (prefs.disableVpn) {
@@ -194,7 +193,6 @@ class TProxyService : VpnService() {
             }
 
             else -> {
-                logFileManager.clearLogs()
                 openSession(Preferences(this), vpn = true)
                 startXray()
                 return START_STICKY
@@ -227,7 +225,10 @@ class TProxyService : VpnService() {
         super.onRevoke()
     }
 
-    /** Opens a telemetry session for the selected config, unless one is open. */
+    /**
+     * Opens a telemetry session for the selected config, and a log file for it, unless a session is
+     * open already.
+     */
     private fun openSession(prefs: Preferences, vpn: Boolean = !prefs.disableVpn) {
         val path = prefs.selectedConfigPath
         if (path.isNullOrEmpty()) {
@@ -239,7 +240,9 @@ class TProxyService : VpnService() {
             )
             return
         }
-        recorder.startSession(if (vpn) Mode.VPN else Mode.CORE_ONLY, configName(path))
+        val open = recorder.currentSessionId
+        val id = recorder.startSession(if (vpn) Mode.VPN else Mode.CORE_ONLY, configName(path))
+        if (id != open) logFileManager.startSession(id)
     }
 
     private val runListener =
@@ -306,7 +309,7 @@ class TProxyService : VpnService() {
     }
 
     private fun handleLog(tag: String, line: String) {
-        val formattedLine = "[$tag] $line"
+        val formattedLine = LogFileManager.format(tag, line, System.currentTimeMillis())
         logFileManager.appendLog(formattedLine)
         synchronized(logBroadcastBuffer) {
             logBroadcastBuffer.add(formattedLine)
