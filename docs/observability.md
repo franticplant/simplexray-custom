@@ -121,7 +121,7 @@ is kept) and shared through the system share sheet.
 - **Dashboard:**
   - a live throughput chart of the last two minutes
   - today's proxied, direct and blocked data
-  - the current session: since when, time to connect, restarts
+  - the current session's duration and data
 - **Activity** (from the Dashboard), with a range of 24 hours, 7 days or 30 days:
   - **Overview:** a traffic chart split by class, data and connected time per
     config, and reliability: success rate, median time to connect, crashes,

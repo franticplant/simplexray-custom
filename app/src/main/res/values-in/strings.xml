@@ -223,6 +223,7 @@
     <string name="session_duration">Durasi</string>
     <string name="session_mode">Mode</string>
     <string name="session_end_reason">Berakhir karena</string>
+    <string name="session_log">Akhir log</string>
     <string name="session_runs">Jalannya core</string>
     <string name="run_stopped">Dihentikan</string>
     <string name="run_crashed">Mogok, dimulai ulang</string>

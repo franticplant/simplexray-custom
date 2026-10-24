@@ -223,6 +223,7 @@
     <string name="session_duration">时长</string>
     <string name="session_mode">模式</string>
     <string name="session_end_reason">结束原因</string>
+    <string name="session_log">日志末尾</string>
     <string name="session_runs">核心运行记录</string>
     <string name="run_stopped">已停止</string>
     <string name="run_crashed">崩溃，已重启</string>

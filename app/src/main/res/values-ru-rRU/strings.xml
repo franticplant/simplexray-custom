@@ -232,6 +232,7 @@
     <string name="session_duration">Длительность</string>
     <string name="session_mode">Режим</string>
     <string name="session_end_reason">Причина завершения</string>
+    <string name="session_log">Конец журнала</string>
     <string name="session_runs">Запуски ядра</string>
     <string name="run_stopped">Остановлено</string>
     <string name="run_crashed">Сбой, перезапущено</string>

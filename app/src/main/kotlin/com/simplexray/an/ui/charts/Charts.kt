@@ -71,7 +71,8 @@ fun TrafficBars(
     val grid = MaterialTheme.colorScheme.outlineVariant
     val highlight = MaterialTheme.colorScheme.onSurface
     var selected by remember(buckets) { mutableIntStateOf(-1) }
-    val max = buckets.maxOfOrNull { it.bytes.total }?.takeIf { it > 0 } ?: 1L
+    val peak = buckets.maxOfOrNull { it.bytes.total } ?: 0L
+    val max = peak.coerceAtLeast(1L) // the scale; never zero
     val summary =
         stringResource(
             R.string.chart_traffic_summary,
@@ -82,7 +83,7 @@ fun TrafficBars(
         val shown = buckets.getOrNull(selected)
         Text(
             text =
-                if (shown == null) stringResource(R.string.chart_peak, formatBytes(max))
+                if (shown == null) stringResource(R.string.chart_peak, formatBytes(peak))
                 else "${label(shown.start)} · ${breakdown(shown.bytes)}",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -206,7 +207,8 @@ fun ThroughputLines(
     val up = MaterialTheme.colorScheme.tertiary
     val down = MaterialTheme.colorScheme.primary
     val grid = MaterialTheme.colorScheme.outlineVariant
-    val max = samples.maxOfOrNull { maxOf(it.first, it.second) }?.takeIf { it > 0 } ?: 1L
+    val peak = samples.maxOfOrNull { maxOf(it.first, it.second) } ?: 0L
+    val max = peak.coerceAtLeast(1L)
     Column(modifier) {
         Canvas(Modifier.fillMaxWidth().height(height).padding(vertical = 2.dp)) {
             drawLine(grid, Offset(0f, size.height), Offset(size.width, size.height), 1f)
@@ -228,7 +230,7 @@ fun ThroughputLines(
             LegendDot(down, stringResource(R.string.chart_download))
             LegendDot(up, stringResource(R.string.chart_upload))
             Text(
-                stringResource(R.string.chart_peak, formatBytes(max) + "/s"),
+                stringResource(R.string.chart_peak, formatBytes(peak) + "/s"),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

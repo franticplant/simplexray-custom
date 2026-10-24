@@ -86,6 +86,10 @@ class ActivityViewModel(application: Application) : AndroidViewModel(application
     private val _detail = MutableStateFlow<SessionDetail?>(null)
     val detail: StateFlow<SessionDetail?> = _detail.asStateFlow()
 
+    /** The end of the opened session's log, oldest line first. */
+    private val _detailLog = MutableStateFlow<List<String>>(emptyList())
+    val detailLog: StateFlow<List<String>> = _detailLog.asStateFlow()
+
     fun setRange(range: ActivityRange) {
         _state.update { it.copy(range = range) }
         refresh()
@@ -114,6 +118,15 @@ class ActivityViewModel(application: Application) : AndroidViewModel(application
                             it.id == id
                         } ?: return@withContext null
                     History.sessionDetail(store, session, now, ZoneId.systemDefault())
+                }
+            _detailLog.value =
+                withContext(Dispatchers.IO) {
+                    Telemetry.sessionLogs(getApplication())
+                        .firstOrNull { it.name.endsWith("_$id.txt") }
+                        ?.let { file ->
+                            runCatching { file.readLines().takeLast(LOG_LINES) }.getOrNull()
+                        }
+                        .orEmpty()
                 }
         }
     }
@@ -286,5 +299,6 @@ class ActivityViewModel(application: Application) : AndroidViewModel(application
     private companion object {
         const val TAG = "ActivityViewModel"
         const val MAX_EVENTS = 500
+        const val LOG_LINES = 200
     }
 }

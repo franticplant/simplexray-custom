@@ -821,6 +821,7 @@ private fun ExportDialog(viewModel: ActivityViewModel, onDismiss: () -> Unit) {
 @Composable
 fun SessionDetailScreen(viewModel: ActivityViewModel, sessionId: String, onBack: () -> Unit) {
     val detail by viewModel.detail.collectAsState()
+    val log by viewModel.detailLog.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(sessionId) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -851,12 +852,12 @@ fun SessionDetailScreen(viewModel: ActivityViewModel, sessionId: String, onBack:
             Column(Modifier.padding(padding)) { Message(stringResource(R.string.loading)) }
             return@Scaffold
         }
-        SessionDetailContent(d, Modifier.padding(padding))
+        SessionDetailContent(d, log, Modifier.padding(padding))
     }
 }
 
 @Composable
-private fun SessionDetailContent(d: SessionDetail, modifier: Modifier) {
+private fun SessionDetailContent(d: SessionDetail, log: List<String>, modifier: Modifier) {
     val s = d.session
     val now = System.currentTimeMillis()
     LazyColumn(
@@ -922,6 +923,13 @@ private fun SessionDetailContent(d: SessionDetail, modifier: Modifier) {
             item {
                 SectionCard(stringResource(R.string.tab_events)) {
                     d.events.sortedBy { it.time }.forEach { EventItem(it, Times::time) }
+                }
+            }
+        }
+        if (log.isNotEmpty()) {
+            item {
+                SectionCard(stringResource(R.string.session_log)) {
+                    log.forEach { LogEntryItem(it) }
                 }
             }
         }

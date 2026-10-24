@@ -233,6 +233,7 @@
     <string name="session_duration">Duration</string>
     <string name="session_mode">Mode</string>
     <string name="session_end_reason">Ended because</string>
+    <string name="session_log">End of the log</string>
     <string name="session_runs">Core runs</string>
     <string name="run_stopped">Stopped</string>
     <string name="run_crashed">Crashed, restarted</string>
