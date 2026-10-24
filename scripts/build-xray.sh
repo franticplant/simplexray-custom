@@ -58,8 +58,11 @@ for abi in "${abis[@]}"; do
     mkdir -p "$out"
     (
         cd "$src"
+        # -checklinkname=0 matches Xray's own Android build: wlynxg/anet reaches
+        # net.zoneCache through //go:linkname, which Go 1.27's linker rejects by
+        # default.
         GOOS=android GOARCH=$goarch CGO_ENABLED=1 CC=$toolchain/$triple$min_api-clang \
             go build -o "$out/libxray.so" -trimpath -buildvcs=false \
-            -ldflags="-X github.com/xtls/xray-core/core.build=$commit -s -w -buildid=" ./main
+            -ldflags="-X github.com/xtls/xray-core/core.build=$commit -s -w -buildid= -checklinkname=0" ./main
     )
 done
