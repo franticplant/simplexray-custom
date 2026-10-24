@@ -112,6 +112,13 @@ class MainActivity : ComponentActivity() {
 
         when (intent.action) {
             Intent.ACTION_SEND -> {
+                // Shared text, such as a link from a messenger, comes as EXTRA_TEXT; a shared file
+                // as a content URI.
+                val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim()
+                if (!text.isNullOrEmpty()) {
+                    lifecycleScope.launch { mainViewModel.handleSharedContent(text) }
+                    return
+                }
                 intent.clipData?.getItemAt(0)?.uri?.let { uri ->
                     lifecycleScope.launch(Dispatchers.IO) {
                         try {
@@ -127,7 +134,7 @@ class MainActivity : ComponentActivity() {
 
             Intent.ACTION_VIEW -> {
                 intent.data?.toString()?.let { uriString ->
-                    if (uriString.startsWith("simplexray://")) {
+                    if (VIEW_SCHEMES.any { uriString.startsWith("$it://") }) {
                         lifecycleScope.launch {
                             mainViewModel.handleSharedContent(uriString)
                         }
@@ -140,5 +147,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val TAG = "MainActivity"
         private var lastProcessedIntentHash: Int = 0
+
+        // The link schemes the manifest opens this activity for.
+        private val VIEW_SCHEMES = listOf("simplexray", "vless", "vmess", "trojan", "ss")
     }
 }
