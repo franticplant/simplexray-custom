@@ -137,8 +137,7 @@ class FileManager(private val application: Application, private val prefs: Prefe
                     return@withContext null
                 }
 
-            val filename = "$name.json"
-            val newFile = File(application.filesDir, filename)
+            val newFile = newConfigFile(application.filesDir, name)
 
             try {
                 FileOutputStream(newFile).use { fileOutputStream ->
@@ -159,6 +158,7 @@ class FileManager(private val application: Application, private val prefs: Prefe
     suspend fun deleteConfigFile(fileToDelete: File): Boolean {
         return withContext(Dispatchers.IO) {
             if (fileToDelete.delete()) {
+                prefs.setConfigActive(fileToDelete.absolutePath, false)
                 Log.d(TAG, "Successfully deleted config file: ${fileToDelete.name}")
                 true
             } else {
@@ -443,8 +443,10 @@ class FileManager(private val application: Application, private val prefs: Prefe
 
                 if (configFilesMap != null) {
                     for ((filename, content) in configFilesMap) {
+                        // Only configs: a backup must not overwrite the rule files.
                         if (
                             filename == null ||
+                                !filename.endsWith(".json") ||
                                 FilenameValidator.validateFilename(
                                     application,
                                     filename,
@@ -718,6 +720,11 @@ class FileManager(private val application: Application, private val prefs: Prefe
                     Log.w(TAG, "Old file name not found in order, adding new name to end: $newName")
                 }
 
+                if (prefs.isConfigActive(oldFile.absolutePath)) {
+                    prefs.setConfigActive(oldFile.absolutePath, false)
+                    prefs.setConfigActive(newFile.absolutePath, true)
+                }
+
                 if (prefs.selectedConfigPath == oldFile.absolutePath) {
                     prefs.selectedConfigPath = newFile.absolutePath
                     Log.d(
@@ -776,5 +783,14 @@ class FileManager(private val application: Application, private val prefs: Prefe
 
     companion object {
         const val TAG = "FileManager"
+
+        /**
+         * A file for a config named [name] that does not exist yet: "name.json", or "name (2).json"
+         * and so on if a config of that name is already there, so an import never replaces one.
+         */
+        internal fun newConfigFile(dir: File, name: String): File =
+            generateSequence(1) { it + 1 }
+                .map { n -> File(dir, if (n == 1) "$name.json" else "$name ($n).json") }
+                .first { !it.exists() }
     }
 }
