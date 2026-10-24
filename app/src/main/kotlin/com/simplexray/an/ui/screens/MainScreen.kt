@@ -98,6 +98,10 @@ fun MainScreen(
                     mainViewModel.refreshConfigFileList()
                 }
 
+                is MainViewUiEvent.Connect -> {
+                    callbacks.onConnect()
+                }
+
                 is MainViewUiEvent.Navigate -> {
                     val currentTime = System.currentTimeMillis()
                     if (currentTime - lastNavigationTime >= NAVIGATION_DEBOUNCE_DELAY) {

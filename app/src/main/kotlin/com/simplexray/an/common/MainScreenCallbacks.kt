@@ -24,6 +24,7 @@ data class MainScreenCallbacks(
     val onPerformRestore: () -> Unit,
     val onDeleteConfigClick: (File, () -> Unit) -> Unit,
     val onSwitchVpnService: () -> Unit,
+    val onConnect: () -> Unit,
 )
 
 @Composable
@@ -108,18 +109,23 @@ fun rememberMainScreenCallbacks(
         }
     }
 
-    val onSwitchVpnService: () -> Unit = {
+    val onConnect: () -> Unit = {
         logViewModel.clearLogs()
+        mainViewModel.setControlMenuClickable(false)
+        val missing = mainViewModel.missingRuntimePermissions()
+        if (missing.isNotEmpty()) {
+            launchers.permissionsThenConnectLauncher.launch(missing)
+        } else {
+            mainViewModel.connect(launchers.vpnPrepareLauncher)
+        }
+    }
+
+    val onSwitchVpnService: () -> Unit = {
         if (mainViewModel.isServiceEnabled.value) {
+            logViewModel.clearLogs()
             mainViewModel.stopTProxyService()
         } else {
-            mainViewModel.setControlMenuClickable(false)
-            val missing = mainViewModel.missingRuntimePermissions()
-            if (missing.isNotEmpty()) {
-                launchers.permissionsThenConnectLauncher.launch(missing)
-            } else {
-                mainViewModel.connect(launchers.vpnPrepareLauncher)
-            }
+            onConnect()
         }
     }
 
@@ -131,5 +137,6 @@ fun rememberMainScreenCallbacks(
         onPerformRestore = onPerformRestore,
         onDeleteConfigClick = onDeleteConfigClick,
         onSwitchVpnService = onSwitchVpnService,
+        onConnect = onConnect,
     )
 }
