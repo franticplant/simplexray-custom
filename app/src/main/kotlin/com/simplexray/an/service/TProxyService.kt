@@ -272,22 +272,17 @@ class TProxyService : VpnService() {
 
             setMetered(false)
 
-            if (prefs.bypassLan) {
-                addRoute("10.0.0.0", 8)
-                addRoute("172.16.0.0", 12)
-                addRoute("192.168.0.0", 16)
-            }
             if (prefs.httpProxyEnabled) {
                 setHttpProxy(ProxyInfo.buildDirectProxy("127.0.0.1", prefs.socksPort))
             }
             if (prefs.ipv4) {
                 addAddress(prefs.tunnelIpv4Address, prefs.tunnelIpv4Prefix)
-                addRoute("0.0.0.0", 0)
+                VpnRoutes.ipv4(prefs.bypassLan).forEach { addRoute(it.address, it.prefixLength) }
                 prefs.dnsIpv4.takeIf { it.isNotEmpty() }?.also { addDnsServer(it) }
             }
             if (prefs.ipv6) {
                 addAddress(prefs.tunnelIpv6Address, prefs.tunnelIpv6Prefix)
-                addRoute("::", 0)
+                VpnRoutes.ipv6(prefs.bypassLan).forEach { addRoute(it.address, it.prefixLength) }
                 prefs.dnsIpv6.takeIf { it.isNotEmpty() }?.also { addDnsServer(it) }
             }
 
