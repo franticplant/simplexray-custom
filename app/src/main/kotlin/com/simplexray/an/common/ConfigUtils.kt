@@ -48,6 +48,7 @@ object ConfigUtils {
         jsonObject.put("api", api)
 
         if (jsonObject.optJSONObject("stats") == null) jsonObject.put("stats", JSONObject())
+        tagOutbounds(jsonObject)
 
         val policy = jsonObject.optJSONObject("policy") ?: JSONObject()
         val system = policy.optJSONObject("system") ?: JSONObject()
@@ -57,6 +58,30 @@ object ConfigUtils {
         jsonObject.put("policy", policy)
 
         return jsonObject.toString(2)
+    }
+
+    /**
+     * Gives every untagged outbound a tag ("outbound-<index>"). Xray keeps traffic counters only
+     * for tagged outbounds, and configs made from share links have none. Routing is unaffected: no
+     * rule can name an outbound that has no tag.
+     */
+    fun tagOutbounds(config: JSONObject): JSONObject {
+        val outbounds = config.optJSONArray("outbounds") ?: return config
+        val taken =
+            (0 until outbounds.length())
+                .mapNotNull {
+                    outbounds.optJSONObject(it)?.optString("tag")?.takeIf(String::isNotEmpty)
+                }
+                .toMutableSet()
+        for (i in 0 until outbounds.length()) {
+            val outbound = outbounds.optJSONObject(i) ?: continue
+            if (outbound.optString("tag").isNotEmpty()) continue
+            var tag = "outbound-$i"
+            while (tag in taken) tag += "_"
+            taken += tag
+            outbound.put("tag", tag)
+        }
+        return config
     }
 
     fun extractPortsFromJson(jsonContent: String): Set<Int> {

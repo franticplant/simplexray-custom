@@ -40,7 +40,37 @@ class InstanceSupervisor(
     private val onChange: (List<XrayInstanceInfo>) -> Unit,
     private val policy: RestartPolicy = RestartPolicy(),
     private val probe: (address: String, port: Int) -> Boolean = ::apiAnswers,
+    private val listener: Listener = object : Listener {},
 ) {
+    /** Each Xray process's lifecycle, for telemetry. Called on the supervisor's threads. */
+    interface Listener {
+        fun runStarted(info: XrayInstanceInfo) {}
+
+        fun runReady(info: XrayInstanceInfo) {}
+
+        /**
+         * The process exited, or could not be started (exitCode null). failure is null for a
+         * requested stop.
+         */
+        fun runEnded(
+            info: XrayInstanceInfo,
+            exitCode: Int?,
+            outcome: RunOutcome,
+            failure: String?,
+        ) {}
+    }
+
+    enum class RunOutcome {
+        /** Stopped on request. */
+        STOPPED,
+        /** Exited after running stably; restarted. */
+        CRASHED,
+        /** Exited before running stably, or crashed too often; not restarted. */
+        FAILED,
+        /** Its API never answered. */
+        TIMEOUT,
+    }
+
     interface Launcher {
         /** Ports the config listens on or connects to, which the API port must avoid. */
         fun configPorts(configPath: String): Set<Int>
@@ -102,6 +132,7 @@ class InstanceSupervisor(
                 p.destroyForcibly()
                 p.waitFor(STOP_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             }
+            endRun(instance, runCatching { p.exitValue() }.getOrNull(), RunOutcome.STOPPED, null)
         }
         instance.job.cancel()
         synchronized(instances) { instances.remove(configPath) }
@@ -113,6 +144,13 @@ class InstanceSupervisor(
             val run = runOnce(instance)
             if (instance.stopping) return
             val restarts = policy.restartsAfter(run.healthyMs, instance.restarts)
+            val outcome =
+                when {
+                    run.timedOut -> RunOutcome.TIMEOUT
+                    restarts != null -> RunOutcome.CRASHED
+                    else -> RunOutcome.FAILED
+                }
+            endRun(instance, run.exitCode, outcome, run.failure)
             instance.errorMessage = run.failure
             if (restarts == null) {
                 onLog(instance.configName, "Not restarting: ${run.failure}")
@@ -130,7 +168,19 @@ class InstanceSupervisor(
         }
     }
 
-    private class RunResult(val healthyMs: Long, val failure: String)
+    private class RunResult(
+        val healthyMs: Long,
+        val failure: String,
+        val exitCode: Int? = null,
+        val timedOut: Boolean = false,
+    )
+
+    /** Reports the end of the instance's current run, once. */
+    private fun endRun(instance: Instance, exitCode: Int?, outcome: RunOutcome, failure: String?) {
+        if (instance.runOpen.compareAndSet(true, false)) {
+            listener.runEnded(instance.info(), exitCode, outcome, failure)
+        }
+    }
 
     /** Runs Xray once, until it exits or is stopped. */
     private suspend fun runOnce(instance: Instance): RunResult = coroutineScope {
@@ -143,8 +193,13 @@ class InstanceSupervisor(
                 instance.apiPort = findFreePort(excluded)
                 instance.status = InstanceStatus.STARTING
                 publish()
+                instance.runOpen.set(true)
+                listener.runStarted(instance.info())
                 launcher.launch(instance.configPath, instance.apiAddress, instance.apiPort)
             } catch (e: Exception) {
+                // A config that cannot be read fails before the run is reported; report it now.
+                if (instance.runOpen.compareAndSet(false, true))
+                    listener.runStarted(instance.info())
                 return@coroutineScope RunResult(0, "Could not start Xray: ${e.message}")
             }
         instance.process = process
@@ -160,6 +215,7 @@ class InstanceSupervisor(
                     instance.status = InstanceStatus.RUNNING
                     instance.errorMessage = null
                     publish()
+                    listener.runReady(instance.info())
                     return@launch
                 }
                 delay(PROBE_INTERVAL_MS)
@@ -195,6 +251,8 @@ class InstanceSupervisor(
                 if (timedOut.get())
                     "Xray did not open its API port within ${policy.startupTimeoutMs / 1000} s"
                 else describeExit(code, recent),
+            exitCode = code,
+            timedOut = timedOut.get(),
         )
     }
 
@@ -215,6 +273,8 @@ class InstanceSupervisor(
         @Volatile var status = InstanceStatus.STARTING
         @Volatile var errorMessage: String? = null
         @Volatile var restarts = 0
+        /** A run was reported started and not yet ended. */
+        val runOpen = AtomicBoolean(false)
 
         fun info() =
             XrayInstanceInfo(

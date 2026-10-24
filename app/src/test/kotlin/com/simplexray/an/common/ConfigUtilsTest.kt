@@ -123,4 +123,35 @@ class ConfigUtilsTest {
 
         assertEquals(1, config.getJSONObject("api").getJSONArray("services").length())
     }
+
+    @Test
+    fun injectStatsService_tagsUntaggedOutbounds_soTheirTrafficIsCounted() {
+        val config =
+            JSONObject(
+                ConfigUtils.injectStatsService(
+                    "127.0.0.1",
+                    1,
+                    """{"outbounds":[{"protocol":"vless"},{"protocol":"freedom","tag":"outbound-1"},
+                    {"protocol":"blackhole"}]}""",
+                )
+            )
+
+        val tags =
+            config.getJSONArray("outbounds").let { a ->
+                (0 until a.length()).map { a.getJSONObject(it).getString("tag") }
+            }
+        assertEquals(listOf("outbound-0", "outbound-1", "outbound-2"), tags)
+    }
+
+    @Test
+    fun tagOutbounds_avoidsTagsAlreadyTaken() {
+        val config = JSONObject("""{"outbounds":[{"protocol":"vless"},{"tag":"outbound-0"}]}""")
+
+        ConfigUtils.tagOutbounds(config)
+
+        assertEquals(
+            "outbound-0_",
+            config.getJSONArray("outbounds").getJSONObject(0).getString("tag"),
+        )
+    }
 }
