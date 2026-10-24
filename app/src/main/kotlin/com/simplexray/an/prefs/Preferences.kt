@@ -313,6 +313,20 @@ class Preferences(context: Context) {
             setValueInProvider(API_PORT, port.toString())
         }
 
+    /** Whether sessions, runs, traffic and events are recorded (docs/observability.md). */
+    var historyEnabled: Boolean
+        get() = getBooleanPref(HISTORY_ENABLED, true)
+        set(enable) {
+            setValueInProvider(HISTORY_ENABLED, enable)
+        }
+
+    /** How many days of history to keep. */
+    var historyDays: Int
+        get() = getPrefData(HISTORY_DAYS).first?.toIntOrNull()?.takeIf { it > 0 } ?: 30
+        set(days) {
+            setValueInProvider(HISTORY_DAYS, days.toString())
+        }
+
     var bypassSelectedApps: Boolean
         get() = getBooleanPref(BYPASS_SELECTED_APPS, false)
         set(enable) {
@@ -387,6 +401,8 @@ class Preferences(context: Context) {
         const val BYPASS_SELECTED_APPS: String = "BypassSelectedApps"
         const val THEME: String = "Theme"
         const val ACTIVE_CONFIG_PATHS: String = "ActiveConfigPaths"
+        const val HISTORY_ENABLED: String = "HistoryEnabled"
+        const val HISTORY_DAYS: String = "HistoryDays"
         private const val TAG = "Preferences"
     }
 }

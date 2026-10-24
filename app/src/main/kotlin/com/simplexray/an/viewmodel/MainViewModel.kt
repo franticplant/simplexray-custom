@@ -27,6 +27,7 @@ import androidx.lifecycle.viewModelScope
 import com.simplexray.an.BuildConfig
 import com.simplexray.an.R
 import com.simplexray.an.common.CoreStatsClient
+import com.simplexray.an.common.ROUTE_ACTIVITY
 import com.simplexray.an.common.ROUTE_APP_LIST
 import com.simplexray.an.common.ROUTE_CONFIG_EDIT
 import com.simplexray.an.common.ThemeMode
@@ -36,6 +37,9 @@ import com.simplexray.an.core.XrayInstanceInfo
 import com.simplexray.an.data.source.FileManager
 import com.simplexray.an.prefs.Preferences
 import com.simplexray.an.service.TProxyService
+import com.simplexray.an.telemetry.Category
+import com.simplexray.an.telemetry.Level
+import com.simplexray.an.telemetry.Telemetry
 import java.io.BufferedReader
 import java.io.File
 import java.io.IOException
@@ -143,6 +147,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _coreStatsState = MutableStateFlow(CoreStatsState())
     val coreStatsState: StateFlow<CoreStatsState> = _coreStatsState.asStateFlow()
 
+    // The last THROUGHPUT_SAMPLES (upload, download) rates, one per poll, for the live chart.
+    private val _throughput = MutableStateFlow<List<Pair<Long, Long>>>(emptyList())
+    val throughput: StateFlow<List<Pair<Long, Long>>> = _throughput.asStateFlow()
+
     private val _activeInstances = MutableStateFlow<List<InstanceState>>(emptyList())
     val activeInstances: StateFlow<List<InstanceState>> = _activeInstances.asStateFlow()
 
@@ -191,6 +199,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 setServiceEnabled(false)
                 setControlMenuClickable(true)
                 _coreStatsState.value = CoreStatsState()
+                _throughput.value = emptyList()
                 _activeInstances.value = emptyList()
                 closeStatsClients()
             }
@@ -441,7 +450,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Polls every instance once; the screens showing stats call it every second. */
     suspend fun updateCoreStats() {
         if (!_isServiceEnabled.value) return
-        _coreStatsState.value = CoreStatsState.of(refreshInstances())
+        val stats = CoreStatsState.of(refreshInstances())
+        _coreStatsState.value = stats
+        _throughput.value =
+            (_throughput.value + (stats.uplinkRate to stats.downlinkRate)).takeLast(
+                THROUGHPUT_SAMPLES
+            )
     }
 
     fun refreshActiveInstances() {
@@ -894,6 +908,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun openActivity() {
+        _uiEvent.trySend(MainViewUiEvent.Navigate(ROUTE_ACTIVITY))
+    }
+
     fun navigateToAppList() {
         viewModelScope.launch {
             appListViewModel = AppListViewModel(application)
@@ -1053,6 +1071,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val firstLine = reader.readLine()
                     val latency = System.currentTimeMillis() - start
                     if (firstLine != null && firstLine.startsWith("HTTP/")) {
+                        recordConnectivity(host, latency, null)
                         _uiEvent.trySend(
                             MainViewUiEvent.ShowSnackbar(
                                 application.getString(
@@ -1062,6 +1081,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             )
                         )
                     } else {
+                        recordConnectivity(host, latency, "no HTTP response")
                         _uiEvent.trySend(
                             MainViewUiEvent.ShowSnackbar(
                                 application.getString(R.string.connectivity_test_failed)
@@ -1070,6 +1090,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             } catch (e: Exception) {
+                recordConnectivity(
+                    host,
+                    System.currentTimeMillis() - start,
+                    e.message ?: e.javaClass.simpleName,
+                )
                 _uiEvent.trySend(
                     MainViewUiEvent.ShowSnackbar(
                         application.getString(R.string.connectivity_test_failed)
@@ -1077,6 +1102,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
         }
+    }
+
+    private fun recordConnectivity(host: String, latencyMs: Long, failure: String?) {
+        Telemetry.event(
+            application,
+            if (failure == null) Level.INFO else Level.WARN,
+            Category.CONNECTIVITY,
+            if (failure == null) "connectivity.ok" else "connectivity.failed",
+            if (failure == null) "Connectivity test to $host: $latencyMs ms"
+            else "Connectivity test to $host failed: $failure",
+            buildMap {
+                put("host", host)
+                put("latency_ms", latencyMs.toString())
+                failure?.let { put("failure", it) }
+            },
+        )
     }
 
     fun registerTProxyServiceReceivers() {
@@ -1424,6 +1465,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     companion object {
+        /** Two minutes of one-second polls. */
+        const val THROUGHPUT_SAMPLES = 120
         private const val IPV4_REGEX =
             "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
         private val IPV4_PATTERN: Pattern = Pattern.compile(IPV4_REGEX)

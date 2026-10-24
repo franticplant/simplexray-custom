@@ -17,6 +17,9 @@ import com.simplexray.an.common.ConfigUtils
 import com.simplexray.an.common.FilenameValidator
 import com.simplexray.an.common.configFormat.ConfigFormatConverter
 import com.simplexray.an.prefs.Preferences
+import com.simplexray.an.telemetry.Category
+import com.simplexray.an.telemetry.Level
+import com.simplexray.an.telemetry.Telemetry
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -126,6 +129,7 @@ class FileManager(private val application: Application, private val prefs: Prefe
             val (name, configContent) =
                 ConfigFormatConverter.convert(application, content).getOrElse { e ->
                     Log.e(TAG, "Failed to parse config", e)
+                    importFailed(content, e.message)
                     return@withContext null
                 }
 
@@ -134,6 +138,7 @@ class FileManager(private val application: Application, private val prefs: Prefe
                     ConfigUtils.formatConfigContent(configContent)
                 } catch (e: JSONException) {
                     Log.e(TAG, "Invalid JSON format in provided content.", e)
+                    importFailed(content, "not a config: ${e.message}")
                     return@withContext null
                 }
 
@@ -148,6 +153,14 @@ class FileManager(private val application: Application, private val prefs: Prefe
                     TAG,
                     "Successfully imported config from content to: ${newFile.absolutePath}",
                 )
+                Telemetry.event(
+                    application,
+                    Level.INFO,
+                    Category.CONFIG,
+                    "config.import",
+                    "Imported ${newFile.name.removeSuffix(".json")}",
+                    mapOf("format" to importFormat(content)),
+                )
                 newFile.absolutePath
             } catch (e: IOException) {
                 Log.e(TAG, "Error saving imported config file from content.", e)
@@ -159,6 +172,13 @@ class FileManager(private val application: Application, private val prefs: Prefe
     suspend fun deleteConfigFile(fileToDelete: File): Boolean {
         return withContext(Dispatchers.IO) {
             if (fileToDelete.delete()) {
+                Telemetry.event(
+                    application,
+                    Level.INFO,
+                    Category.CONFIG,
+                    "config.delete",
+                    "Deleted ${fileToDelete.name.removeSuffix(".json")}",
+                )
                 Log.d(TAG, "Successfully deleted config file: ${fileToDelete.name}")
                 true
             } else {
@@ -774,7 +794,24 @@ class FileManager(private val application: Application, private val prefs: Prefe
         }
     }
 
+    private fun importFailed(content: String, reason: String?) {
+        Telemetry.event(
+            application,
+            Level.WARN,
+            Category.CONFIG,
+            "config.import_failed",
+            "Import failed" + reason?.let { ": $it" }.orEmpty(),
+            mapOf("format" to importFormat(content)),
+        )
+    }
+
     companion object {
         const val TAG = "FileManager"
+
+        /** The kind of thing imported: a link's scheme, or "json". Never its content. */
+        private fun importFormat(content: String): String =
+            content.trimStart().substringBefore("://", "").lowercase().takeIf {
+                it.isNotEmpty() && it.length < 16 && it.all(Char::isLetter)
+            } ?: "json"
     }
 }

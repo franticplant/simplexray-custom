@@ -54,6 +54,18 @@ class CoreStatsClient(private val channel: ManagedChannel) : Closeable {
                 }
         }
 
+    /** Every counter whose name matches [pattern], by name; null if the API does not answer. */
+    suspend fun getCounters(pattern: String): Map<String, Long>? =
+        withContext(Dispatchers.IO) {
+            val request = QueryStatsRequest.newBuilder().setPattern(pattern).setReset(false).build()
+            runCatching {
+                blockingStub.withDeadlineAfter(CALL_TIMEOUT_S, TimeUnit.SECONDS).queryStats(request)
+            }
+                .getOrNull()
+                ?.statList
+                ?.associate { it.name to it.value }
+        }
+
     override fun close() {
         channel.shutdown().awaitTermination(5, TimeUnit.SECONDS)
     }

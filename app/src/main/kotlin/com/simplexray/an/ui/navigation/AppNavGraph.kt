@@ -15,21 +15,28 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.simplexray.an.common.ROUTE_ACTIVITY
 import com.simplexray.an.common.ROUTE_APP_LIST
 import com.simplexray.an.common.ROUTE_CONFIG_EDIT
 import com.simplexray.an.common.ROUTE_MAIN
+import com.simplexray.an.common.ROUTE_SESSION
+import com.simplexray.an.ui.screens.ActivityScreen
 import com.simplexray.an.ui.screens.AppListScreen
 import com.simplexray.an.ui.screens.ConfigEditScreen
 import com.simplexray.an.ui.screens.MainScreen
+import com.simplexray.an.ui.screens.SessionDetailScreen
+import com.simplexray.an.viewmodel.ActivityViewModel
 import com.simplexray.an.viewmodel.MainViewModel
 
 @Composable
 fun AppNavHost(mainViewModel: MainViewModel) {
     val navController = rememberNavController()
+    val activityViewModel: ActivityViewModel = viewModel()
 
     NavHost(
         navController = navController,
@@ -59,6 +66,34 @@ fun AppNavHost(mainViewModel: MainViewModel) {
             AppListScreen(
                 viewModel = mainViewModel.appListViewModel,
                 onBackClick = { navController.popBackStack() },
+            )
+        }
+
+        composable(
+            route = ROUTE_ACTIVITY,
+            enterTransition = { enterTransition() },
+            exitTransition = { exitTransition() },
+            popEnterTransition = { popEnterTransition() },
+            popExitTransition = { popExitTransition() },
+        ) {
+            ActivityScreen(
+                viewModel = activityViewModel,
+                onBack = { navController.popBackStack() },
+                onOpenSession = { id -> navController.navigate("$ROUTE_SESSION/$id") },
+            )
+        }
+
+        composable(
+            route = "$ROUTE_SESSION/{id}",
+            enterTransition = { enterTransition() },
+            exitTransition = { exitTransition() },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { popExitTransition() },
+        ) { entry ->
+            SessionDetailScreen(
+                viewModel = activityViewModel,
+                sessionId = entry.arguments?.getString("id").orEmpty(),
+                onBack = { navController.popBackStack() },
             )
         }
 

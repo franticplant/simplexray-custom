@@ -23,6 +23,8 @@ import androidx.core.app.NotificationCompat
 import com.simplexray.an.BuildConfig
 import com.simplexray.an.R
 import com.simplexray.an.activity.MainActivity
+import com.simplexray.an.common.ConfigUtils
+import com.simplexray.an.common.CoreStatsClient
 import com.simplexray.an.core.InstanceRegistry
 import com.simplexray.an.core.InstanceStatus
 import com.simplexray.an.core.InstanceSupervisor
@@ -30,6 +32,14 @@ import com.simplexray.an.core.XrayInstanceInfo
 import com.simplexray.an.core.XrayLauncher
 import com.simplexray.an.data.source.LogFileManager
 import com.simplexray.an.prefs.Preferences
+import com.simplexray.an.telemetry.Category
+import com.simplexray.an.telemetry.EndReason
+import com.simplexray.an.telemetry.Level
+import com.simplexray.an.telemetry.Mode
+import com.simplexray.an.telemetry.NetworkWatcher
+import com.simplexray.an.telemetry.Outcome
+import com.simplexray.an.telemetry.Recorder
+import com.simplexray.an.telemetry.Telemetry
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -38,7 +48,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONObject
 
 class TProxyService : VpnService() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -64,6 +79,14 @@ class TProxyService : VpnService() {
     private lateinit var supervisor: InstanceSupervisor
     private var tunFd: ParcelFileDescriptor? = null
 
+    // Telemetry (docs/observability.md). Its scope outlives serviceScope, which a stop cancels
+    // before the session is closed.
+    private val telemetryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private lateinit var recorder: Recorder
+    private lateinit var networkWatcher: NetworkWatcher
+    @Volatile private var historyOn = true
+    private val statsClients = HashMap<String, CoreStatsClient>() // guarded by itself
+
     // The foreground notification's channel, while it is showing.
     @Volatile private var notificationChannel: String? = null
     @Volatile private var instances: List<XrayInstanceInfo> = emptyList()
@@ -73,6 +96,9 @@ class TProxyService : VpnService() {
         logFileManager = LogFileManager(this)
         // Anything registered belongs to a previous process of this service, now gone.
         InstanceRegistry.clear(this)
+        val prefs = Preferences(this)
+        historyOn = prefs.historyEnabled
+        recorder = Recorder(Telemetry.store(this, Telemetry.SERVICE), enabled = { historyOn })
         supervisor =
             InstanceSupervisor(
                 XrayLauncher(this),
@@ -82,7 +108,24 @@ class TProxyService : VpnService() {
                     InstanceRegistry.publish(this, infos)
                     notificationChannel?.let { showNotification(it) }
                 },
+                listener = runListener,
             )
+        networkWatcher = NetworkWatcher(this, recorder).also { it.start() }
+        telemetryScope.launch {
+            recorder.closeOrphans()
+            while (isActive) {
+                val p = Preferences(this@TProxyService)
+                historyOn = p.historyEnabled
+                recorder.maintain(p.historyDays)
+                delay(MAINTENANCE_INTERVAL_MS)
+            }
+        }
+        telemetryScope.launch {
+            while (isActive) {
+                delay(SAMPLE_INTERVAL_MS)
+                sampleCounters()
+            }
+        }
         Log.d(TAG, "TProxyService created.")
     }
 
@@ -90,7 +133,7 @@ class TProxyService : VpnService() {
         val action = intent?.action
         when (action) {
             ACTION_DISCONNECT -> {
-                stopXray()
+                stopXray(EndReason.USER)
                 return START_NOT_STICKY
             }
 
@@ -119,14 +162,21 @@ class TProxyService : VpnService() {
                 val selectedConfigPath = prefs.selectedConfigPath
                 if (!selectedConfigPath.isNullOrEmpty()) {
                     Log.d(TAG, "Received RELOAD_CONFIG action for primary instance.")
+                    recorder.event(
+                        Level.INFO,
+                        Category.SESSION,
+                        "session.switch",
+                        "Switched to ${configName(selectedConfigPath)}",
+                        mapOf("config" to configName(selectedConfigPath)),
+                    )
                     switchPrimary(prefs, selectedConfigPath)
                 }
                 return START_STICKY
             }
 
             ACTION_START -> {
-                logFileManager.clearLogs()
                 val prefs = Preferences(this)
+                openSession(prefs)
                 if (prefs.disableVpn) {
                     serviceScope.launch { runXrayProcess() }
                     val successIntent = Intent(ACTION_START)
@@ -143,7 +193,7 @@ class TProxyService : VpnService() {
             }
 
             else -> {
-                logFileManager.clearLogs()
+                openSession(Preferences(this), vpn = true)
                 startXray()
                 return START_STICKY
             }
@@ -161,17 +211,105 @@ class TProxyService : VpnService() {
         broadcastLogsRunnable.run()
         serviceScope.cancel()
         supervisor.close()
+        // Closed already, unless the service is going away some other way.
+        recorder.endSession(EndReason.STOPPED)
+        networkWatcher.stop()
+        telemetryScope.cancel()
+        synchronized(statsClients) { statsClients.values.forEach { it.close() } }
         Log.d(TAG, "TProxyService destroyed.")
         exitProcess(0)
     }
 
     override fun onRevoke() {
-        stopXray()
+        stopXray(EndReason.REVOKED, "VPN access was taken by another app or revoked")
         super.onRevoke()
     }
 
+    /**
+     * Opens a telemetry session for the selected config, and a log file for it, unless a session is
+     * open already.
+     */
+    private fun openSession(prefs: Preferences, vpn: Boolean = !prefs.disableVpn) {
+        val path = prefs.selectedConfigPath
+        if (path.isNullOrEmpty()) {
+            recorder.event(
+                Level.ERROR,
+                Category.SESSION,
+                "session.no_config",
+                "Connect requested with no config selected",
+            )
+            return
+        }
+        val open = recorder.currentSessionId
+        val id = recorder.startSession(if (vpn) Mode.VPN else Mode.CORE_ONLY, configName(path))
+        if (id != open) logFileManager.startSession(id)
+    }
+
+    private val runListener =
+        object : InstanceSupervisor.Listener {
+            override fun runStarted(info: XrayInstanceInfo) {
+                // The same tags XrayLauncher gives the outbounds when it launches the config.
+                val classes = runCatching {
+                    Recorder.outboundClasses(
+                        ConfigUtils.tagOutbounds(JSONObject(File(info.configPath).readText()))
+                    )
+                }
+                    .getOrDefault(emptyMap())
+                recorder.runStarted(
+                    info.configPath,
+                    info.configName,
+                    info.isPrimaryVpn,
+                    runKey(info),
+                    classes,
+                )
+            }
+
+            override fun runReady(info: XrayInstanceInfo) = recorder.runReady(info.configPath)
+
+            override fun runEnded(
+                info: XrayInstanceInfo,
+                exitCode: Int?,
+                outcome: InstanceSupervisor.RunOutcome,
+                failure: String?,
+            ) =
+                recorder.runEnded(
+                    info.configPath,
+                    info.configName,
+                    info.isPrimaryVpn,
+                    exitCode,
+                    when (outcome) {
+                        InstanceSupervisor.RunOutcome.STOPPED -> Outcome.STOPPED
+                        InstanceSupervisor.RunOutcome.CRASHED -> Outcome.CRASHED
+                        InstanceSupervisor.RunOutcome.FAILED -> Outcome.FAILED
+                        InstanceSupervisor.RunOutcome.TIMEOUT -> Outcome.TIMEOUT
+                    },
+                    failure,
+                )
+        }
+
+    /** Reads every ready core's outbound counters into the recorder. */
+    private suspend fun sampleCounters() {
+        val keys = recorder.readyRuns()
+        val clients =
+            synchronized(statsClients) {
+                (statsClients.keys - keys.toSet()).forEach { statsClients.remove(it)?.close() }
+                keys.associateWith { key ->
+                    statsClients.getOrPut(key) {
+                        CoreStatsClient.create(
+                            key.substringBeforeLast(':'),
+                            key.substringAfterLast(':').toInt(),
+                        )
+                    }
+                }
+            }
+        clients.forEach { (key, client) ->
+            client.getCounters("outbound>>>")?.let { recorder.counters(key, it) }
+        }
+        recorder.flushTraffic(all = false)
+    }
+
     private fun handleLog(tag: String, line: String) {
-        val formattedLine = "[$tag] $line"
+        val formattedLine = LogFileManager.format(tag, line, System.currentTimeMillis())
         logFileManager.appendLog(formattedLine)
         synchronized(logBroadcastBuffer) {
             logBroadcastBuffer.add(formattedLine)
@@ -217,8 +355,11 @@ class TProxyService : VpnService() {
             .forEach { supervisor.start(it.configPath, isPrimaryVpn = false) }
     }
 
-    private fun stopXray() {
+    private fun stopXray(reason: EndReason, detail: String? = null) {
         Log.d(TAG, "stopXray called")
+        // A last reading, so the traffic since the previous sample is not lost.
+        runBlocking { withTimeoutOrNull(FINAL_SAMPLE_TIMEOUT_MS) { sampleCounters() } }
+        recorder.endSession(reason, detail)
         serviceScope.cancel()
         // onDestroy, which follows, stops the instances.
         stopService()
@@ -230,7 +371,7 @@ class TProxyService : VpnService() {
         val builder = getVpnBuilder(prefs)
         tunFd = builder.establish()
         if (tunFd == null) {
-            stopXray()
+            stopXray(EndReason.FAILED, "The VPN could not be set up (no VPN permission?)")
             return
         }
         val tproxyFile = File(cacheDir, "tproxy.conf")
@@ -242,18 +383,18 @@ class TProxyService : VpnService() {
             }
         } catch (e: IOException) {
             Log.e(TAG, e.toString())
-            stopXray()
+            stopXray(EndReason.FAILED, "Could not write the tunnel config: ${e.message}")
             return
         }
         val fd = tunFd?.fd
         if (fd == null) {
             Log.e(TAG, "tunFd is null after establish()")
-            stopXray()
+            stopXray(EndReason.FAILED, "The VPN interface has no file descriptor")
             return
         }
         if (!TProxyStartService(tproxyFile.absolutePath, fd)) {
             Log.e(TAG, "hev-socks5-tunnel failed to start")
-            stopXray()
+            stopXray(EndReason.FAILED, "The tunnel (hev-socks5-tunnel) failed to start")
             return
         }
 
@@ -394,6 +535,13 @@ class TProxyService : VpnService() {
         const val EXTRA_LOG_DATA: String = "log_data"
         private const val TAG = "VpnService"
         private const val BROADCAST_DELAY_MS: Long = 3000
+        private const val SAMPLE_INTERVAL_MS = 10_000L
+        private const val FINAL_SAMPLE_TIMEOUT_MS = 1_500L
+        private const val MAINTENANCE_INTERVAL_MS = 3_600_000L
+
+        private fun runKey(info: XrayInstanceInfo) = "${info.apiAddress}:${info.apiPort}"
+
+        private fun configName(path: String) = File(path).name.removeSuffix(".json")
 
         init {
             System.loadLibrary("hev-socks5-tunnel")

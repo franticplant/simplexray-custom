@@ -52,4 +52,13 @@ class FormatterTest {
         assertEquals("100:00:00", formatUptime(360_000))
         assertEquals("N/A", formatUptime(-1))
     }
+
+    @Test
+    fun formatDuration_showsTheTwoLargestUnits() {
+        assertEquals("0s", formatDuration(0))
+        assertEquals("45s", formatDuration(45_999))
+        assertEquals("12m 5s", formatDuration(725_000))
+        assertEquals("3h 20m", formatDuration(12_000_000))
+        assertEquals("2d 4h", formatDuration(187_200_000))
+    }
 }

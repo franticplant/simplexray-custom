@@ -25,6 +25,32 @@ class InstanceSupervisorTest {
     private val statuses: MutableList<InstanceStatus> =
         Collections.synchronizedList(mutableListOf())
     private var supervisor: InstanceSupervisor? = null
+    // The listener's calls, as "started a", "ready a", "ended a FAILED 23".
+    private val runs: MutableList<String> = Collections.synchronizedList(mutableListOf())
+    private val listener =
+        object : InstanceSupervisor.Listener {
+            override fun runStarted(info: XrayInstanceInfo) {
+                runs += "started ${info.configName}"
+            }
+
+            override fun runReady(info: XrayInstanceInfo) {
+                runs += "ready ${info.configName}"
+            }
+
+            override fun runEnded(
+                info: XrayInstanceInfo,
+                exitCode: Int?,
+                outcome: InstanceSupervisor.RunOutcome,
+                failure: String?,
+            ) {
+                runs += "ended ${info.configName} $outcome $exitCode"
+            }
+        }
+
+    private fun awaitRuns(count: Int) {
+        val deadline = System.currentTimeMillis() + 5_000
+        while (runs.size < count && System.currentTimeMillis() < deadline) Thread.sleep(20)
+    }
 
     private fun supervisor(
         script: String,
@@ -55,6 +81,7 @@ class InstanceSupervisorTest {
                 onChange = { infos -> infos.firstOrNull()?.let { statuses += it.status } },
                 policy = policy,
                 probe = probe,
+                listener = listener,
             )
             .also { supervisor = it }
 
@@ -210,6 +237,75 @@ class InstanceSupervisorTest {
     }
 
     @Test
+    fun listener_aRunThatIsStopped() {
+        val s = supervisor("exec sleep 30")
+        s.start("/configs/a.json", isPrimaryVpn = true)
+        s.awaitInstance { it?.status == InstanceStatus.RUNNING }
+
+        s.stop("/configs/a.json")
+        awaitRuns(3)
+
+        assertEquals("started a", runs[0])
+        assertEquals("ready a", runs[1])
+        assertTrue(runs[2], runs[2].startsWith("ended a STOPPED"))
+        assertEquals(3, runs.size)
+    }
+
+    @Test
+    fun listener_aRunThatFailsAtStartup() {
+        val s = supervisor("exit 23")
+        s.start("/configs/a.json", isPrimaryVpn = false)
+        s.awaitInstance { it?.status == InstanceStatus.ERROR }
+        awaitRuns(3)
+
+        assertEquals("ended a FAILED 23", runs.last())
+    }
+
+    @Test
+    fun listener_crashesThenGivingUp() {
+        val policy = RestartPolicy(stableAfterMs = 100, maxRestarts = 1, baseDelayMs = 10)
+        val s = supervisor("sleep 0.3; exit 2", policy)
+        s.start("/configs/a.json", isPrimaryVpn = false)
+        s.awaitInstance(timeoutMs = 10_000) { it?.status == InstanceStatus.ERROR }
+        awaitRuns(6)
+
+        assertEquals(
+            listOf("ended a CRASHED 2", "ended a FAILED 2"),
+            runs.filter { it.startsWith("ended") },
+        )
+    }
+
+    @Test
+    fun listener_aConfigThatCannotBeReadIsAFailedRun() {
+        val s =
+            supervisorWith(
+                object : InstanceSupervisor.Launcher {
+                    override fun configPorts(configPath: String): Set<Int> =
+                        throw IOException("no such file")
+
+                    override fun launch(configPath: String, apiAddress: String, apiPort: Int) =
+                        throw AssertionError("not launched")
+                }
+            )
+        s.start("/configs/a.json", isPrimaryVpn = false)
+        s.awaitInstance { it?.status == InstanceStatus.ERROR }
+        awaitRuns(2)
+
+        assertEquals(listOf("started a", "ended a FAILED null"), runs)
+    }
+
+    @Test
+    fun listener_aTimeout() {
+        val s =
+            supervisor("exec sleep 30", RestartPolicy(startupTimeoutMs = 300), { _, _ -> false })
+        s.start("/configs/a.json", isPrimaryVpn = false)
+        s.awaitInstance { it?.status == InstanceStatus.ERROR }
+        awaitRuns(2)
+
+        assertTrue(runs.last(), runs.last().startsWith("ended a TIMEOUT"))
+    }
+
+    @Test
     fun restartPolicy() {
         val policy = RestartPolicy(stableAfterMs = 5_000, resetAfterMs = 60_000, maxRestarts = 3)
 
@@ -238,6 +334,17 @@ class InstanceSupervisorTest {
         assertEquals(
             "Xray exited with code 1: [Error] failed to dial",
             InstanceSupervisor.describeExit(1, listOf("[Error] failed to dial", "shutting down")),
+        )
+        // Traffic logging is not a reason.
+        assertEquals(
+            "Xray exited with code 0",
+            InstanceSupervisor.describeExit(
+                0,
+                listOf(
+                    "2026/10/24 14:21:23 from tcp:127.0.0.1:1 accepted tcp:1.2.3.4:443 [proxy]",
+                    "2026/10/24 14:21:24 [Info] app/dispatcher: taking detour",
+                ),
+            ),
         )
     }
 
