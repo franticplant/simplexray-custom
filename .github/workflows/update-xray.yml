@@ -30,7 +30,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     if: github.ref == 'refs/heads/main'
     permissions:
       contents: write # commit and tag through the API
@@ -38,6 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          submodules: recursive
           persist-credentials: false
 
       - name: Check for updates
@@ -102,6 +103,17 @@ jobs:
             echo "- **Xray-core** updated to [$XRAY](https://github.com/XTLS/Xray-core/releases/tag/$XRAY), built with Go $GO."
             echo "- **Geo data** updated to [$GEO](https://github.com/lhear/v2ray-rules-dat/releases/tag/$GEO)."
           } > "docs/release-notes/v$NAME.md"
+
+      # Build the updated tree before the immutable tag exists. This catches
+      # link, compile and unit-test failures while the update can still be
+      # fixed or abandoned; a tag that fails its release build cannot be moved.
+      - name: Set up the updated build
+        if: steps.check.outputs.update == 'true'
+        uses: ./.github/actions/setup-build
+
+      - name: Test and build the updated app
+        if: steps.check.outputs.update == 'true'
+        run: ./gradlew --no-configuration-cache testDebugUnitTest assembleRelease -Punsigned
 
       - name: Commit and tag
         if: steps.check.outputs.update == 'true'
